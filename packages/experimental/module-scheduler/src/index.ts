@@ -365,6 +365,10 @@ export function createModuleRunner(
   }
 }
 
+/**
+ * Registers immutable module definitions and runs isolated modules through DSH ToolRuntime.
+ * Disposing the service cancels queued and active runs and rejects later calls as blocked.
+ */
 export class ModuleSchedulerService extends Service {
   static inject = ['tools']
 
@@ -379,10 +383,20 @@ export class ModuleSchedulerService extends Service {
     }, 'module-scheduler: dispose runs')
   }
 
-  runner(hostTools: ReadonlyMap<string, HostTool> = new Map()) {
+  /**
+   * Creates a runner using the supplied host-tool map.
+   * @param hostTools - Host tools available to declared module calls.
+   * @returns A runner whose handles expose run-scoped cancellation and terminal results.
+   */
+  runner(hostTools: ReadonlyMap<string, HostTool> = new Map()): (request: ModuleRunRequest) => ModuleRunHandle {
     return createModuleRunner(this.registry, this.coordinator, hostTools)
   }
 
+  /**
+   * Runs one registered module through the host ToolRuntime.
+   * @param request - Session, task, module reference, and schema-checked input.
+   * @returns A handle that resolves to a validated success or an explicit terminal failure.
+   */
   run(request: ModuleRunRequest): ModuleRunHandle {
     let sequence = 0
     const hostTools = new Map<string, HostTool>()

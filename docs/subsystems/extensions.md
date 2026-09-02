@@ -274,6 +274,30 @@ publish(topic: string, payload: InspectorJsonValue, monotonicMs?: number): void
 
 Source: [`packages/experimental/inspector/src/index.ts`](../../packages/experimental/inspector/src/index.ts)
 
+<a id="ctxmodulescheduler--moduleschedulerservice"></a>
+
+### `ctx.moduleScheduler` — `ModuleSchedulerService`
+
+Registers immutable module definitions and runs isolated modules through DSH ToolRuntime. Disposing the service cancels queued and active runs and rejects later calls as blocked.
+
+```ts cordis-catalog
+/**
+ * Creates a runner using the supplied host-tool map.
+ * @param hostTools - Host tools available to declared module calls.
+ * @returns A runner whose handles expose run-scoped cancellation and terminal results.
+ */
+runner(hostTools: ReadonlyMap<string, HostTool> = new Map()): (request: ModuleRunRequest) => ModuleRunHandle
+
+/**
+ * Runs one registered module through the host ToolRuntime.
+ * @param request - Session, task, module reference, and schema-checked input.
+ * @returns A handle that resolves to a validated success or an explicit terminal failure.
+ */
+run(request: ModuleRunRequest): ModuleRunHandle
+```
+
+Source: [`packages/experimental/module-scheduler/src/index.ts`](../../packages/experimental/module-scheduler/src/index.ts)
+
 <a id="cordis-events"></a>
 
 ### `cordis/*` events

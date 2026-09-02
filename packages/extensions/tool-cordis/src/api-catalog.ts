@@ -1231,6 +1231,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'moduleScheduler',
+    summary: 'Registers immutable module definitions and runs isolated modules through DSH ToolRuntime.',
+    description: 'Registers immutable module definitions and runs isolated modules through DSH ToolRuntime. Disposing the service cancels queued and active runs and rejects later calls as blocked.',
+    methods: [
+      {
+        signature: 'runner(hostTools: ReadonlyMap<string, HostTool> = new Map()): (request: ModuleRunRequest) => ModuleRunHandle',
+        description: 'Creates a runner using the supplied host-tool map.',
+        parameters: [{ name: 'hostTools', description: 'Host tools available to declared module calls.' }],
+        returns: 'A runner whose handles expose run-scoped cancellation and terminal results.',
+      },
+      {
+        signature: 'run(request: ModuleRunRequest): ModuleRunHandle',
+        description: 'Runs one registered module through the host ToolRuntime.',
+        parameters: [{ name: 'request', description: 'Session, task, module reference, and schema-checked input.' }],
+        returns: 'A handle that resolves to a validated success or an explicit terminal failure.',
+      },
+    ],
+  },
+  {
     key: 'permissionPresets',
     summary: 'Owns the deployment\'s permission presets and their write path.',
     description: 'Owns the deployment\'s permission presets and their write path. Requires a confining `ctx.shell` executor and `ctx.approval`; unmatched knob values are reported as CUSTOM_PRESET, not an error.',
@@ -4073,6 +4092,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GrantRecord {\n    readonly kind: \'grant\';\n    readonly payload: unknown;\n}',
   },
   {
+    name: 'HostTool',
+    declaration: 'export type HostTool = (args: unknown, context: HostToolContext) => Promise<unknown>;',
+  },
+  {
+    name: 'HostToolContext',
+    declaration: 'export interface HostToolContext {\n    request: ModuleRunRequest;\n    run: ModuleRunResult & {\n        signal: AbortSignal;\n    };\n}',
+  },
+  {
     name: 'ImageAttachmentLimits',
     declaration: 'export interface ImageAttachmentLimits {\n    maxImageBytes: number;\n    maxImagesPerMessage: number;\n    maxMessageImageBytes: number;\n    maxImagePixels: number;\n    maxImageDimension: number;\n    mediaTypes: readonly ImageMediaType[];\n}',
   },
@@ -4459,6 +4486,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModelReasoningEffort',
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
+  },
+  {
+    name: 'ModuleRunHandle',
+    declaration: 'export type ModuleRunHandle = Promise<ModuleRunResult> & {\n    runId: string;\n    cancel: () => boolean;\n};',
+  },
+  {
+    name: 'ModuleRunRequest',
+    declaration: 'export interface ModuleRunRequest {\n    sessionId: string;\n    taskId: string;\n    moduleRef: string;\n    input?: unknown;\n}',
+  },
+  {
+    name: 'ModuleRunResult',
+    declaration: 'export interface ModuleRunResult {\n    runId: string;\n    sessionId: string;\n    taskId: string;\n    moduleRef: string;\n    status: ModuleStatus;\n    validated: boolean;\n    reason?: string;\n    output?: unknown;\n}',
+  },
+  {
+    name: 'ModuleStatus',
+    declaration: 'export type ModuleStatus = \'created\' | \'running\' | \'succeeded\' | \'failed\' | \'blocked\' | \'cancelled\' | \'timed_out\';',
   },
   {
     name: 'ObjectJsonSchema',
