@@ -17,6 +17,7 @@ describe('Module Scheduler host profile bundle', () => {
     expect(manifest.private).toBe(true)
     expect(manifest.publishConfig).toBeUndefined()
     expect(manifest.dependencies).toEqual({
+      '@deepseek-ai/dsh-experimental-android-environment-diagnostics-profile': 'workspace:^',
       '@deepseek-ai/dsh-experimental-module-scheduler': 'workspace:^',
       '@deepseek-ai/dsh-web': 'workspace:^',
     })
@@ -31,6 +32,9 @@ describe('Module Scheduler host profile bundle', () => {
     }, {
       id: 'module-network-research',
       name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/network-research',
+    }, {
+      id: 'android-environment-diagnostics',
+      name: '@deepseek-ai/dsh-experimental-android-environment-diagnostics-profile/android-diagnostics',
     }])
   })
 })

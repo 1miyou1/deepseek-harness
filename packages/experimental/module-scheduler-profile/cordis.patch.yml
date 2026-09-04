@@ -10,3 +10,5 @@
         maxRecentRuns: 50
     - id: module-network-research
       name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/network-research'
+    - id: android-environment-diagnostics
+      name: '@deepseek-ai/dsh-experimental-android-environment-diagnostics-profile/android-diagnostics'

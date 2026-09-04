@@ -1,0 +1,16 @@
+{
+  "name": "@deepseek-ai/dsh-experimental-android-environment-diagnostics-profile",
+  "description": "Private host profile for Android environment diagnostics",
+  "version": "0.1.2-alpha.5",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": { ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" }, "./android-diagnostics": { "types": "./lib/types/android-diagnostics.d.ts", "default": "./lib/types/android-diagnostics.js" }, "./cordis.patch.yml": "./cordis.patch.yml", "./src/*": "./src/*", "./package.json": "./package.json" },
+  "files": ["lib/index.js", "cordis.patch.yml", "lib/types/**/*.js", "lib/types/**/*.d.ts"],
+  "license": "MIT",
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "dependencies": { "@deepseek-ai/dsh-experimental-android-environment-diagnostics": "workspace:^", "@deepseek-ai/dsh-experimental-android-tooling": "workspace:^", "@deepseek-ai/dsh-experimental-module-scheduler": "workspace:^" },
+  "peerDependencies": { "@deepseek-ai/cordis": "workspace:^", "@deepseek-ai/dsh-subprocess": "workspace:^" },
+  "devDependencies": { "@deepseek-ai/cordis": "workspace:^", "@deepseek-ai/cordis-plugin-include": "workspace:^", "@deepseek-ai/dsh-subprocess": "workspace:^", "typescript": "^6.0.3", "vitest": "^4.1.8", "js-yaml": "^4.2.0" }
+}
