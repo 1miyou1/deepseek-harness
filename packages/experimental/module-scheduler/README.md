@@ -15,6 +15,7 @@ This private incubation package registers `ctx.moduleScheduler`. It shares immut
 
 - [Service contract](#service-contract)
 - [Execution rules](#execution-rules)
+- [Create a module scaffold](#create-a-module-scaffold)
 - [Verification](#verification)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
@@ -40,13 +41,22 @@ Loading the default export registers one registry and one in-process coordinator
 
 -----
 
+<a id="create-a-module-scaffold"></a>
+## Create a module scaffold
+
+Run `pnpm run create:module -- --id <kebab-id> --name "<Chinese name>" --description "<Chinese description>"`. The command creates one private experimental profile package, Chinese registration metadata, strict empty schemas, an explicit `module-implementation-required` executor, lifecycle coverage, bilingual README files, and its Host project reference. It never attaches the unfinished bundle to the main profile; implement the executor and schemas, run `pnpm install` plus package checks, then add the dependency and patch row explicitly.
+
+To undo a generated scaffold, run `pnpm run create:module -- --remove --id <kebab-id>`. The command removes the package and its single Host reference only after confirming the generated package identity; it refuses missing, duplicated, or non-generated targets.
+
+-----
+
 <a id="verification"></a>
 ## Verification
 
 From the repository root:
 
 ```sh
-pnpm exec vitest run packages/experimental/module-scheduler/tests
+pnpm exec vitest run packages/experimental/module-scheduler/tests scripts/create-module.spec.ts
 pnpm exec tsc -b packages/experimental/module-scheduler/tsconfig.json --force
 pnpm exec tsx scripts/run-oxlint.ts packages/experimental/module-scheduler
 ```

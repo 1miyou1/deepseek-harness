@@ -15,6 +15,7 @@ kind: "package-reference"
 
 - [服务合同](#service-contract)
 - [执行规则](#execution-rules)
+- [创建模块脚手架](#create-a-module-scaffold)
 - [验证](#verification)
 - [模型体验](#model-experience)
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
@@ -40,13 +41,22 @@ kind: "package-reference"
 
 -----
 
+<a id="create-a-module-scaffold"></a>
+## 创建模块脚手架
+
+运行 `pnpm run create:module -- --id <kebab-id> --name "<中文名称>" --description "<中文描述>"`。该命令创建一个私有实验性 profile 包、中文注册元数据、严格空 schema、显式 `module-implementation-required` 执行器、生命周期测试、双语 README 和 Host 工程引用。它不会把未完成 bundle 接入主 profile；请先实现执行器和 schema，运行 `pnpm install` 与包级检查，再显式添加依赖和 patch 行。
+
+撤销生成的脚手架时运行 `pnpm run create:module -- --remove --id <kebab-id>`。命令只会在确认生成包身份后删除包目录及唯一的 Host 引用；目标不存在、引用重复或目标不是生成脚手架时会拒绝操作。
+
+-----
+
 <a id="verification"></a>
 ## 验证
 
 在仓库根目录运行：
 
 ```sh
-pnpm exec vitest run packages/experimental/module-scheduler/tests
+pnpm exec vitest run packages/experimental/module-scheduler/tests scripts/create-module.spec.ts
 pnpm exec tsc -b packages/experimental/module-scheduler/tsconfig.json --force
 pnpm exec tsx scripts/run-oxlint.ts packages/experimental/module-scheduler
 ```
