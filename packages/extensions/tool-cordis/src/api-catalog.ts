@@ -1236,10 +1236,38 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Registers immutable module definitions and runs isolated modules through DSH ToolRuntime. Disposing the service cancels queued and active runs and rejects later calls as blocked.',
     methods: [
       {
+        signature: 'readonly registry: ModuleRegistry = new ModuleRegistry()',
+        description: 'Shared immutable module registry.',
+        parameters: [],
+      },
+      {
+        signature: 'readonly coordinator: ModuleCoordinator',
+        description: 'Bounded coordinator for all runs.',
+        parameters: [],
+      },
+      {
         signature: 'runner(hostTools: ReadonlyMap<string, HostTool> = new Map()): (request: ModuleRunRequest) => ModuleRunHandle',
         description: 'Creates a runner using the supplied host-tool map.',
         parameters: [{ name: 'hostTools', description: 'Host tools available to declared module calls.' }],
         returns: 'A runner whose handles expose run-scoped cancellation and terminal results.',
+      },
+      {
+        signature: '@Remote(\'view\') remoteView(sessionId: string): ModuleSchedulerView',
+        description: 'Returns registered modules and bounded run records for one browser session.',
+        parameters: [{ name: 'sessionId', description: 'Browser session whose run history is projected.' }],
+        returns: 'The current module catalog and session-local run history.',
+      },
+      {
+        signature: '@Remote(\'start\') remoteStart(sessionId: string, request: BrowserModuleRunRequest): ModuleStartResult',
+        description: 'Starts one tool-free module from the browser control surface.',
+        parameters: [{ name: 'sessionId', description: 'Browser session that owns the projected run.' }, { name: 'request', description: 'Task, module reference, and schema-checked input.' }],
+        returns: 'The created run view or an explicit business failure.',
+      },
+      {
+        signature: '@Remote(\'cancel\') remoteCancel(sessionId: string, runId: string): ModuleCancelResult',
+        description: 'Cancels one active run owned by the requested browser session.',
+        parameters: [{ name: 'sessionId', description: 'Browser session that must own the run.' }, { name: 'runId', description: 'Active run identity to cancel.' }],
+        returns: 'Whether cancellation was accepted or an explicit business failure.',
       },
       {
         signature: 'run(request: ModuleRunRequest): ModuleRunHandle',
@@ -3592,6 +3620,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type BrandedNumber<B extends string> = number & {\n    readonly [BRAND]: B;\n};',
   },
   {
+    name: 'BrowserModuleRunRequest',
+    declaration: 'export interface BrowserModuleRunRequest {\n    taskId: string;\n    moduleRef: string;\n    input?: JsonValue;\n}',
+  },
+  {
     name: 'ChunkRow',
     declaration: 'export type ChunkRow = {\n    type: \'text-chunks\';\n    seq0: SessionSeqType;\n    time0: number;\n    data: TextRunData;\n} | {\n    type: \'reasoning-chunks\';\n    seq0: SessionSeqType;\n    time0: number;\n    data: TextRunData;\n} | {\n    type: \'tool-call-chunks\';\n    seq0: SessionSeqType;\n    time0: number;\n    data: ToolCallRunData;\n};',
   },
@@ -4488,6 +4520,34 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
   },
   {
+    name: 'ModuleCancelResult',
+    declaration: 'export type ModuleCancelResult = {\n    ok: true;\n    value: boolean;\n} | {\n    ok: false;\n    error: ModuleConsoleError;\n};',
+  },
+  {
+    name: 'ModuleConsoleError',
+    declaration: 'export interface ModuleConsoleError {\n    code: string;\n    message: string;\n}',
+  },
+  {
+    name: 'ModuleCoordinator',
+    declaration: 'export class ModuleCoordinator {\n    constructor(limits: Partial<ModulePolicy> = {});\n    dispose(): void;\n    run(request: ModuleRunRequest, policy: ModulePolicy, outputSchema: ModuleSchema, execute: (run: {\n        result: ModuleRunResult;\n        signal: AbortSignal;\n    }) => Promise<unknown>): ModuleRunHandle;\n    cancel(runId: string): boolean;\n}',
+  },
+  {
+    name: 'ModuleDefinition',
+    declaration: 'export interface ModuleDefinition {\n    id: string;\n    version: string;\n    description: string;\n    tools: readonly string[];\n    inputSchema: ModuleSchema;\n    outputSchema: ModuleSchema;\n    resourcePolicy: ModulePolicy;\n    execute: (context: ModuleExecutionContext) => Promise<unknown>;\n}',
+  },
+  {
+    name: 'ModuleExecutionContext',
+    declaration: 'export interface ModuleExecutionContext {\n    sessionId: string;\n    taskId: string;\n    runId: string;\n    input: unknown;\n    signal: AbortSignal;\n    tools: ReadonlyMap<string, ModuleTool>;\n}',
+  },
+  {
+    name: 'ModulePolicy',
+    declaration: 'export interface ModulePolicy {\n    maxConcurrent: number;\n    queueLimit: number;\n    timeoutMs: number;\n}',
+  },
+  {
+    name: 'ModuleRegistry',
+    declaration: 'export class ModuleRegistry {\n    register(definition: ModuleDefinition): string;\n    unregister(ref: string): boolean;\n    get(ref: string): ModuleDefinition;\n    list(): ModuleView[];\n}',
+  },
+  {
     name: 'ModuleRunHandle',
     declaration: 'export type ModuleRunHandle = Promise<ModuleRunResult> & {\n    runId: string;\n    cancel: () => boolean;\n};',
   },
@@ -4500,8 +4560,32 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModuleRunResult {\n    runId: string;\n    sessionId: string;\n    taskId: string;\n    moduleRef: string;\n    status: ModuleStatus;\n    validated: boolean;\n    reason?: string;\n    output?: unknown;\n}',
   },
   {
+    name: 'ModuleRunView',
+    declaration: 'export interface ModuleRunView {\n    runId: string;\n    taskId: string;\n    moduleRef: string;\n    status: ModuleStatus;\n    reason?: string;\n    output?: JsonValue;\n}',
+  },
+  {
+    name: 'ModuleSchedulerView',
+    declaration: 'export interface ModuleSchedulerView {\n    modules: ModuleView[];\n    runs: ModuleRunView[];\n}',
+  },
+  {
+    name: 'ModuleSchema',
+    declaration: 'export type ModuleSchema = {\n    type: \'object\';\n    required?: readonly string[];\n    additionalProperties?: boolean;\n    properties?: Readonly<Record<string, ModuleSchema>>;\n} | {\n    type: \'array\';\n    items: ModuleSchema;\n    minItems?: number;\n    maxItems?: number;\n} | {\n    type: \'string\' | \'number\' | \'boolean\';\n};',
+  },
+  {
+    name: 'ModuleStartResult',
+    declaration: 'export type ModuleStartResult = {\n    ok: true;\n    value: ModuleRunView;\n} | {\n    ok: false;\n    error: ModuleConsoleError;\n};',
+  },
+  {
     name: 'ModuleStatus',
     declaration: 'export type ModuleStatus = \'created\' | \'running\' | \'succeeded\' | \'failed\' | \'blocked\' | \'cancelled\' | \'timed_out\';',
+  },
+  {
+    name: 'ModuleTool',
+    declaration: 'export type ModuleTool = (args: unknown) => Promise<unknown>;',
+  },
+  {
+    name: 'ModuleView',
+    declaration: 'export interface ModuleView {\n    ref: string;\n    id: string;\n    version: string;\n    description: string;\n    tools: readonly string[];\n    inputSchema: ModuleSchema;\n    runnableFromBrowser: boolean;\n}',
   },
   {
     name: 'ObjectJsonSchema',

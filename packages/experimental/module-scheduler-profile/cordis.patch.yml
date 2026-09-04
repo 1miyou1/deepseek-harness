@@ -1,0 +1,12 @@
+# Private module scheduler host layer applied after dsh-base.
+
+- insert:
+    - id: module-scheduler
+      name: '@deepseek-ai/dsh-experimental-module-scheduler'
+      config:
+        maxConcurrent: 4
+        queueLimit: 32
+        timeoutMs: 30000
+        maxRecentRuns: 50
+    - id: module-network-research
+      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/network-research'

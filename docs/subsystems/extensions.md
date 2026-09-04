@@ -289,6 +289,29 @@ Registers immutable module definitions and runs isolated modules through DSH Too
 runner(hostTools: ReadonlyMap<string, HostTool> = new Map()): (request: ModuleRunRequest) => ModuleRunHandle
 
 /**
+ * Returns registered modules and bounded run records for one browser session.
+ * @param sessionId - Browser session whose run history is projected.
+ * @returns The current module catalog and session-local run history.
+ */
+@Remote('view') remoteView(sessionId: string): ModuleSchedulerView
+
+/**
+ * Starts one tool-free module from the browser control surface.
+ * @param sessionId - Browser session that owns the projected run.
+ * @param request - Task, module reference, and schema-checked input.
+ * @returns The created run view or an explicit business failure.
+ */
+@Remote('start') remoteStart(sessionId: string, request: BrowserModuleRunRequest): ModuleStartResult
+
+/**
+ * Cancels one active run owned by the requested browser session.
+ * @param sessionId - Browser session that must own the run.
+ * @param runId - Active run identity to cancel.
+ * @returns Whether cancellation was accepted or an explicit business failure.
+ */
+@Remote('cancel') remoteCancel(sessionId: string, runId: string): ModuleCancelResult
+
+/**
  * Runs one registered module through the host ToolRuntime.
  * @param request - Session, task, module reference, and schema-checked input.
  * @returns A handle that resolves to a validated success or an explicit terminal failure.

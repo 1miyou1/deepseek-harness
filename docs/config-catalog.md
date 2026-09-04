@@ -674,6 +674,32 @@ export interface InspectorOptions {
 
 Source: [`packages/experimental/inspector/src/index.ts:66`](../packages/experimental/inspector/src/index.ts)
 
+<a id="deepseek-aidsh-experimental-module-scheduler"></a>
+
+## `@deepseek-ai/dsh-experimental-module-scheduler`
+
+Requires: `tools`
+
+```ts config-catalog
+/** Scheduler-wide optional limits and run history retention. */
+export interface ModuleSchedulerConfig extends Partial<ModulePolicy> {
+  /** Maximum terminal run records retained per session. */
+  maxRecentRuns?: number
+}
+
+/** Concurrency, queue, and timeout limits for a module. */
+export interface ModulePolicy {
+  /** Maximum active runs for this module. */
+  maxConcurrent: number
+  /** Maximum queued runs for this module. */
+  queueLimit: number
+  /** Run timeout in milliseconds. */
+  timeoutMs: number
+}
+```
+
+Source: [`packages/experimental/module-scheduler/src/index.ts:141`](../packages/experimental/module-scheduler/src/index.ts)
+
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 
 ## `@deepseek-ai/dsh-experimental-tool-agent-team`
@@ -3383,6 +3409,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-cordis-client-runner` ([`packages/extensions/cordis-client-runner/src/index.ts`](../packages/extensions/cordis-client-runner/src/index.ts))
 - `@deepseek-ai/dsh-deepseek-llm-api-extensions` ([`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts))
 - `@deepseek-ai/dsh-experimental-client-ui-agent-team` ([`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts))
+- `@deepseek-ai/dsh-experimental-client-ui-module-scheduler` ([`packages/experimental/client-ui-module-scheduler/src/index.ts`](../packages/experimental/client-ui-module-scheduler/src/index.ts))
 - `@deepseek-ai/dsh-fs-e2b` — requires `e2b` ([`packages/e2b/fs-e2b/src/index.ts`](../packages/e2b/fs-e2b/src/index.ts))
 - `@deepseek-ai/dsh-fs-observation-policy` ([`packages/fs/fs-observation-policy/src/index.ts`](../packages/fs/fs-observation-policy/src/index.ts))
 - `@deepseek-ai/dsh-goal-round-driver` — requires `agents` · `goals` · `sessions` ([`packages/goal/goal-round-driver/src/index.ts`](../packages/goal/goal-round-driver/src/index.ts))
@@ -3450,6 +3477,8 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-deque` ([`packages/util/deque/src/index.ts`](../packages/util/deque/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-profile` ([`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-web-profile` ([`packages/experimental/agent-team-web-profile/src/index.ts`](../packages/experimental/agent-team-web-profile/src/index.ts))
+- `@deepseek-ai/dsh-experimental-module-scheduler-profile` ([`packages/experimental/module-scheduler-profile/src/index.ts`](../packages/experimental/module-scheduler-profile/src/index.ts))
+- `@deepseek-ai/dsh-experimental-module-scheduler-web-profile` ([`packages/experimental/module-scheduler-web-profile/src/index.ts`](../packages/experimental/module-scheduler-web-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-webworker-packer` ([`packages/experimental/webworker-packer/src/index.ts`](../packages/experimental/webworker-packer/src/index.ts))
 - `@deepseek-ai/dsh-experimental-webworker-runtime` ([`packages/experimental/webworker-runtime/src/index.ts`](../packages/experimental/webworker-runtime/src/index.ts))
 - `@deepseek-ai/dsh-home-paths` ([`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts))

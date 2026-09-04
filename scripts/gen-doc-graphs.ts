@@ -649,6 +649,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Provider registration and selection plus normalized query execution over exactly four operations; the seam offers no protocol escape hatch, so a backend translates into the normalized request and result.',
   },
   {
+    key: 'moduleScheduler',
+    pkg: 'module-scheduler',
+    title: 'Module scheduler',
+    mode: 'core',
+    consumers: ['module-scheduler-profile', 'module-scheduler-web-profile'],
+    note: 'Owns immutable module definitions, bounded isolated runs, and the browser remote projection.',
+  },
+  {
     key: 'dynamicCordisRunner',
     pkg: 'cordis-host-runner',
     title: 'Dynamic Cordis package host runner',

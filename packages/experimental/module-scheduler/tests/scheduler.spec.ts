@@ -84,6 +84,29 @@ describe('module scheduler contract', () => {
     await expect(queuedOther).resolves.toMatchObject({ status: 'succeeded' })
   })
 
+  it('validates bounded array item shapes', async () => {
+    const registry = new ModuleRegistry()
+    registry.register({
+      ...reader(async ({ input }) => input),
+      inputSchema: {
+        type: 'object', required: ['queries'], additionalProperties: false,
+        properties: { queries: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'string' } } },
+      },
+      outputSchema: {
+        type: 'object', required: ['queries'], additionalProperties: false,
+        properties: { queries: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'string' } } },
+      },
+    })
+    const runner = createModuleRunner(registry, new ModuleCoordinator(), new Map())
+
+    await expect(runner({ sessionId: 'A', taskId: 'T', moduleRef: 'reader@1.0.0', input: { queries: ['one'] } }))
+      .resolves.toMatchObject({ status: 'succeeded' })
+    await expect(runner({ sessionId: 'A', taskId: 'T', moduleRef: 'reader@1.0.0', input: { queries: [] } }))
+      .resolves.toMatchObject({ status: 'blocked', reason: 'input-schema-invalid' })
+    await expect(runner({ sessionId: 'A', taskId: 'T', moduleRef: 'reader@1.0.0', input: { queries: ['one', 2] } }))
+      .resolves.toMatchObject({ status: 'blocked', reason: 'input-schema-invalid' })
+  })
+
   it('rejects output values with the wrong property type', async () => {
     const registry = new ModuleRegistry(); registry.register(reader(async () => ({ value: 42 })))
     const runner = createModuleRunner(registry, new ModuleCoordinator(), new Map())
