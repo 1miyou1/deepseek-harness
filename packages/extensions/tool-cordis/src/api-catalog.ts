@@ -4529,7 +4529,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ModuleDefinition',
-    declaration: 'export interface ModuleDefinition {\n    id: string;\n    version: string;\n    description: string;\n    tools: readonly string[];\n    inputSchema: ModuleSchema;\n    outputSchema: ModuleSchema;\n    resourcePolicy: ModulePolicy;\n    execute: (context: ModuleExecutionContext) => Promise<unknown>;\n}',
+    declaration: 'export interface ModuleDefinition {\n    id: string;\n    version: string;\n    displayName: string;\n    description: string;\n    tools: readonly string[];\n    inputSchema: ModuleSchema;\n    outputSchema: ModuleSchema;\n    resourcePolicy: ModulePolicy;\n    execute: (context: ModuleExecutionContext) => Promise<unknown>;\n}',
   },
   {
     name: 'ModuleExecutionContext',
@@ -4581,7 +4581,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ModuleView',
-    declaration: 'export interface ModuleView {\n    ref: string;\n    id: string;\n    version: string;\n    description: string;\n    tools: readonly string[];\n    inputSchema: ModuleSchema;\n    runnableFromBrowser: boolean;\n}',
+    declaration: 'export interface ModuleView {\n    ref: string;\n    id: string;\n    version: string;\n    displayName: string;\n    description: string;\n    tools: readonly string[];\n    inputSchema: ModuleSchema;\n    runnableFromBrowser: boolean;\n}',
   },
   {
     name: 'ObjectJsonSchema',

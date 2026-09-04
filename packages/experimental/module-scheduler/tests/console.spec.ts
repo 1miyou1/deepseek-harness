@@ -11,7 +11,7 @@ const valueSchema = {
 
 function moduleDefinition(id: string, execute: ModuleDefinition['execute'], tools: readonly string[] = []): ModuleDefinition {
   return {
-    id, version: '1.0.0', description: id, tools, inputSchema: valueSchema, outputSchema: valueSchema,
+    id, version: '1.0.0', displayName: '测试模块', description: '执行测试任务', tools, inputSchema: valueSchema, outputSchema: valueSchema,
     resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 1_000 }, execute,
   }
 }
@@ -36,7 +36,7 @@ describe('module scheduler browser control contract', () => {
 
     expect(ctx.moduleScheduler.remoteView('session-a')).toEqual({
       modules: [{
-        ref: 'reader@1.0.0', id: 'reader', version: '1.0.0', description: 'reader', tools: [],
+        ref: 'reader@1.0.0', id: 'reader', version: '1.0.0', displayName: '测试模块', description: '执行测试任务', tools: [],
         inputSchema: valueSchema, runnableFromBrowser: true,
       }],
       runs: [],

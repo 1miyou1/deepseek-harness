@@ -31,7 +31,7 @@ describe('module scheduler DSH tool gateway', () => {
       execute: async args => args.value,
     }))
     ctx.moduleScheduler.registry.register({
-      id: 'gateway', version: '1.0.0', description: 'gateway', tools: ['echo'],
+      id: 'gateway', version: '1.0.0', displayName: '网关', description: '调用工具网关', tools: ['echo'],
       inputSchema: schema, outputSchema: schema,
       resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 100 },
       execute: async ({ input, tools }) => ({
@@ -55,7 +55,7 @@ describe('module scheduler DSH tool gateway', () => {
     }))
     ctx.on('tools/pre-execute', async (_exec, _next) => ({ kind: 'deny', reason: 'policy denied' }))
     ctx.moduleScheduler.registry.register({
-      id: 'denied', version: '1.0.0', description: 'denied', tools: ['echo'],
+      id: 'denied', version: '1.0.0', displayName: '拒绝测试', description: '验证策略拒绝', tools: ['echo'],
       inputSchema: { type: 'object', additionalProperties: false, properties: {} },
       outputSchema: schema, resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 100 },
       execute: async ({ tools }) => ({ value: await tools.get('echo')?.({}) }),
@@ -77,7 +77,7 @@ describe('module scheduler DSH tool gateway', () => {
       execute: async (_args, exec) => { callIds.push(exec.callId); return exec.callId },
     }))
     ctx.moduleScheduler.registry.register({
-      id: 'identity-module', version: '1.0.0', description: 'identity', tools: ['identity'],
+      id: 'identity-module', version: '1.0.0', displayName: '身份测试', description: '验证调用身份', tools: ['identity'],
       inputSchema: { type: 'object', additionalProperties: false, properties: {} },
       outputSchema: schema, resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 100 },
       execute: async ({ tools }) => { await tools.get('identity')?.({}); return { value: await tools.get('identity')?.({}) } },

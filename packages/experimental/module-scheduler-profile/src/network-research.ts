@@ -11,7 +11,8 @@ export function apply(ctx: Context): void {
   const definition: ModuleDefinition = {
     id: 'network-research',
     version: '1.0.0',
-    description: 'Research current information with the configured web search provider',
+    displayName: '网络调研',
+    description: '使用已配置的网络搜索服务调研当前信息',
     tools: [],
     inputSchema: {
       type: 'object',

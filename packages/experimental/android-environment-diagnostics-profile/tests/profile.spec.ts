@@ -48,6 +48,8 @@ describe('Android diagnostics profile bundle', () => {
     expect(definition).toMatchObject({
       id: 'android-environment-diagnostics',
       version: '1.0.0',
+      displayName: 'Android 环境与设备诊断',
+      description: '只读检查 Android 环境与已连接设备',
       tools: [],
       resourcePolicy: { maxConcurrent: 2, queueLimit: 8, timeoutMs: 30_000 },
     })

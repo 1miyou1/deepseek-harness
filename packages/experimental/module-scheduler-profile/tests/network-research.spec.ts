@@ -41,7 +41,7 @@ describe('network research module', () => {
     const fiber = ctx.plugin(NetworkResearch)
     await fiber
     expect(ctx.moduleScheduler.remoteView('session-a').modules).toMatchObject([{
-      ref: 'network-research@1.0.0', tools: [], runnableFromBrowser: true,
+      ref: 'network-research@1.0.0', displayName: '网络调研', description: '使用已配置的网络搜索服务调研当前信息', tools: [], runnableFromBrowser: true,
     }])
 
     expect(ctx.moduleScheduler.remoteStart('session-a', {

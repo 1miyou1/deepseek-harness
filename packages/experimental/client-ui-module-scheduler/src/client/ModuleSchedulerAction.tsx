@@ -224,7 +224,7 @@ export function ModuleSchedulerAction({
                             value={module.ref}
                             disabled={!module.runnableFromBrowser}
                           >
-                            {module.id} {module.version} — {module.description}
+                            {module.displayName} {module.version} — {module.description}
                             {module.tools.length > 0 ? ` · ${t('requiresTools')}` : ''}
                           </option>
                         ))}

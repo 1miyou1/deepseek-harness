@@ -67,6 +67,8 @@ export interface ModuleExecutionContext {
 export interface ModuleDefinition {
   id: string
   version: string
+  /** Chinese name shown to users; the stable id remains language-neutral. */
+  displayName: string
   description: string
   tools: readonly string[]
   inputSchema: ModuleSchema
@@ -92,6 +94,7 @@ export interface ModuleView {
   ref: string
   id: string
   version: string
+  displayName: string
   description: string
   tools: readonly string[]
   inputSchema: ModuleSchema
@@ -240,6 +243,9 @@ export class ModuleRegistry {
    * @returns Its versioned reference.
    */
   register(definition: ModuleDefinition): string {
+    if (!/\p{Script=Han}/u.test(definition.displayName) || !/\p{Script=Han}/u.test(definition.description)) {
+      throw new Error('invalid-module-localization')
+    }
     if (!Number.isSafeInteger(definition.resourcePolicy.maxConcurrent) || definition.resourcePolicy.maxConcurrent < 1
       || !Number.isSafeInteger(definition.resourcePolicy.queueLimit) || definition.resourcePolicy.queueLimit < 0
       || !Number.isFinite(definition.resourcePolicy.timeoutMs) || definition.resourcePolicy.timeoutMs <= 0) {
@@ -280,10 +286,11 @@ export class ModuleRegistry {
    * @returns Registered module projections sorted by reference.
    */
   list(): ModuleView[] {
-    return [...this.items.values()].map(({ id, version, description, tools, inputSchema }) => ({
+    return [...this.items.values()].map(({ id, version, displayName, description, tools, inputSchema }) => ({
       ref: `${id}@${version}`,
       id,
       version,
+      displayName,
       description,
       tools,
       inputSchema,

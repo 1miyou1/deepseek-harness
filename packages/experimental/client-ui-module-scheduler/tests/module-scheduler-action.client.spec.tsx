@@ -18,11 +18,11 @@ afterEach(cleanup)
 const SESSION = 'session-1' as SessionId
 const NEXT_SESSION = 'session-2' as SessionId
 const runnable = {
-  ref: 'echo@1', id: 'echo', version: '1', description: 'Echo input', tools: [],
+  ref: 'echo@1', id: 'echo', version: '1', displayName: '回显', description: '回显输入内容', tools: [],
   inputSchema: { type: 'object' as const }, runnableFromBrowser: true,
 }
 const assisted = {
-  ref: 'search@1', id: 'search', version: '1', description: 'Needs tools', tools: ['web_search'],
+  ref: 'search@1', id: 'search', version: '1', displayName: '搜索', description: '需要工具支持', tools: ['web_search'],
   inputSchema: { type: 'object' as const }, runnableFromBrowser: false,
 }
 const view: ModuleSchedulerView = {
@@ -79,7 +79,7 @@ describe('ModuleSchedulerAction', () => {
   it('reports invalid JSON without starting a module', async () => {
     const start = vi.fn()
     open(actions({ start }))
-    await screen.findByRole('option', { name: /echo/u })
+    await screen.findByRole('option', { name: /回显/u })
     fireEvent.change(screen.getByLabelText(zh.taskId), { target: { value: 'task-json' } })
     fireEvent.change(screen.getByLabelText(zh.input), { target: { value: '{' } })
     fireEvent.click(screen.getByRole('button', { name: zh.start }))
@@ -89,7 +89,7 @@ describe('ModuleSchedulerAction', () => {
 
   it('disables modules requiring tools', async () => {
     open()
-    const option = await screen.findByRole<HTMLOptionElement>('option', { name: /search/u })
+    const option = await screen.findByRole<HTMLOptionElement>('option', { name: /搜索/u })
     expect(option.disabled).toBe(true)
   })
 
@@ -99,7 +99,7 @@ describe('ModuleSchedulerAction', () => {
       .mockResolvedValueOnce({ ok: true, value: view })
     const start = vi.fn().mockResolvedValue({ ok: true, value: { ok: true, value: view.runs[0] } })
     open(actions({ load, start }))
-    await screen.findByRole('option', { name: /echo/u })
+    await screen.findByRole('option', { name: /回显/u })
     fireEvent.change(screen.getByLabelText(zh.taskId), { target: { value: ' task-1 ' } })
     fireEvent.change(screen.getByLabelText(zh.input), { target: { value: '{"message":"hi"}' } })
     fireEvent.click(screen.getByRole('button', { name: zh.start }))
@@ -139,7 +139,7 @@ describe('ModuleSchedulerAction', () => {
     open(actions({ start: () => Promise.resolve({
       ok: true, value: { ok: false, error: { code: 'input-schema-invalid', message: 'bad input' } },
     }) }))
-    await screen.findByRole('option', { name: /echo/u })
+    await screen.findByRole('option', { name: /回显/u })
     fireEvent.change(screen.getByLabelText(zh.taskId), { target: { value: 'task' } })
     fireEvent.click(screen.getByRole('button', { name: zh.start }))
     expect((await screen.findByRole('alert')).textContent).toBe('bad input (input-schema-invalid)')

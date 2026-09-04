@@ -10,7 +10,8 @@ export function apply(ctx: Context): void {
   const definition: ModuleDefinition = {
     id: 'android-environment-diagnostics',
     version: '1.0.0',
-    description: 'Read-only Android environment and connected-device diagnostics',
+    displayName: 'Android 环境与设备诊断',
+    description: '只读检查 Android 环境与已连接设备',
     tools: [],
     inputSchema: {
       type: 'object',

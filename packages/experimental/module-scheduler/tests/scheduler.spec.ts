@@ -16,7 +16,7 @@ function valueInput(input: unknown): string {
 const reader = (
   execute: ModuleDefinition['execute'] = async ({ input }) => ({ value: valueInput(input) }),
 ): ModuleDefinition => ({
-  id: 'reader', version: '1.0.0', description: 'reader', tools: [], inputSchema: schema, outputSchema: schema,
+  id: 'reader', version: '1.0.0', displayName: '读取器', description: '读取输入数据', tools: [], inputSchema: schema, outputSchema: schema,
   resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 100 }, execute,
 })
 
@@ -199,6 +199,12 @@ describe('module scheduler contract', () => {
       const registry = new ModuleRegistry()
       expect(() => registry.register({ ...reader(), resourcePolicy })).toThrow('invalid-module-policy')
     }
+  })
+
+  it('requires Chinese user-facing module names and descriptions', () => {
+    const registry = new ModuleRegistry()
+    expect(() => registry.register({ ...reader(), displayName: 'Reader' })).toThrow('invalid-module-localization')
+    expect(() => registry.register({ ...reader(), description: 'Read input' })).toThrow('invalid-module-localization')
   })
 
   it('rejects invalid coordinator limits', () => {

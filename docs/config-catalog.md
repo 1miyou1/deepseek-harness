@@ -698,7 +698,7 @@ export interface ModulePolicy {
 }
 ```
 
-Source: [`packages/experimental/module-scheduler/src/index.ts:141`](../packages/experimental/module-scheduler/src/index.ts)
+Source: [`packages/experimental/module-scheduler/src/index.ts:144`](../packages/experimental/module-scheduler/src/index.ts)
 
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 
