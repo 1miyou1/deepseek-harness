@@ -35,6 +35,12 @@ describe('Module Scheduler host profile bundle', () => {
     }, {
       id: 'android-environment-diagnostics',
       name: '@deepseek-ai/dsh-experimental-android-environment-diagnostics-profile/android-diagnostics',
+    }, {
+      id: 'module-developer-tools',
+      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/module-dev-tools',
+    }, {
+      id: 'module-developer',
+      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/module-developer',
     }])
   })
 })

@@ -35,7 +35,8 @@ Loading the default export registers one registry and one in-process coordinator
 
 - Every invocation receives a fresh run identity, abort signal, and result.
 - Global and per-module concurrency and queue limits are enforced independently; excess work is returned as `blocked`.
-- Module code receives only declared tools. Calls pass through DSH `ToolRuntime` validation, policy, approval, event, and cancellation processing.
+- Module code receives only declared tools. Ordinary tools pass through DSH `ToolRuntime` validation, policy, approval, event, and cancellation processing.
+- `registerHostTool()` adds a process-local tool visible only to module runs. Private Host tools do not enter the ordinary model tool catalog and take precedence over an ordinary tool with the same name.
 - Input is checked before admission. Output must satisfy the module schema before a result can be `succeeded` and `validated`.
 - A module definition must use a positive integer `maxConcurrent`, a non-negative integer `queueLimit`, and a finite positive `timeoutMs`; invalid policies are rejected during registration.
 

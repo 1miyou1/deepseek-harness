@@ -220,6 +220,7 @@
       "@deepseek-ai/dsh-experimental-android-environment-diagnostics": ["./packages/experimental/android-environment-diagnostics/src"],
       "@deepseek-ai/dsh-experimental-android-environment-diagnostics-profile": ["./packages/experimental/android-environment-diagnostics-profile/src"],
       "@deepseek-ai/dsh-experimental-module-scheduler-profile": ["./packages/experimental/module-scheduler-profile/src"],
+      "@deepseek-ai/dsh-experimental-module-scheduler-profile/*": ["./packages/experimental/module-scheduler-profile/src/*"],
       "@deepseek-ai/dsh-experimental-module-scheduler-web-profile": ["./packages/experimental/module-scheduler-web-profile/src"],
       "@deepseek-ai/dsh-experimental-agent-team-profile": ["./packages/experimental/agent-team-profile/src"],
       "@deepseek-ai/dsh-experimental-agent-team-web-profile": ["./packages/experimental/agent-team-web-profile/src"],

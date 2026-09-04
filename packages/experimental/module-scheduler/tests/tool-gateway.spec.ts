@@ -46,6 +46,29 @@ describe('module scheduler DSH tool gateway', () => {
     expect(result).toMatchObject({ status: 'succeeded', validated: true, output: { value: 'hello' } })
   })
 
+  it('keeps private Host tools out of the ordinary model tool catalog', async () => {
+    const ctx = await setup()
+    const dispose = ctx.moduleScheduler.registerHostTool('private-edit', async args => args)
+    ctx.moduleScheduler.registry.register({
+      id: 'private-tool', version: '1.0.0', displayName: '私有工具', description: '验证私有工具边界', tools: ['private-edit'],
+      inputSchema: schema, outputSchema: schema,
+      resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 100 },
+      execute: async ({ input, tools }) => await tools.get('private-edit')?.(input),
+    })
+
+    expect(ctx.tools.schemas().some(tool => tool.name === 'private-edit')).toBe(false)
+    await expect(ctx.moduleScheduler.run({
+      sessionId: 'session-a', taskId: 'task-a', moduleRef: 'private-tool@1.0.0', input: { value: 'private' },
+    })).resolves.toMatchObject({ status: 'succeeded', validated: true, output: { value: 'private' } })
+    dispose()
+    const disposeReplacement = ctx.moduleScheduler.registerHostTool('private-edit', async () => ({ value: 'replacement' }))
+    dispose()
+    await expect(ctx.moduleScheduler.run({
+      sessionId: 'session-a', taskId: 'task-b', moduleRef: 'private-tool@1.0.0', input: { value: 'private' },
+    })).resolves.toMatchObject({ status: 'succeeded', validated: true, output: { value: 'replacement' } })
+    disposeReplacement()
+  })
+
   it('preserves ToolRuntime policy failures as failed module results', async () => {
     const ctx = await setup()
     ctx.tools.register(defineTool({

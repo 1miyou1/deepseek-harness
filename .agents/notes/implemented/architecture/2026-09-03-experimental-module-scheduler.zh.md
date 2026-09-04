@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-私有包 `@deepseek-ai/dsh-experimental-module-scheduler` 负责模块定义、运行状态、相互独立的全局与模块级队列准入、取消、结果校验和 Cordis 服务。它的 ToolRuntime 适配层只把主机工具调用映射到运行器。释放 Cordis 服务会取消排队和运行中的任务，之后的新提交会以 `blocked` 和 `disposed` 原因拒绝。该包加入 Host TypeScript 和库构建图，但仍位于 `packages/experimental` 下，并排除在受支持的 profile bundle 和发布包之外。
+私有包 `@deepseek-ai/dsh-experimental-module-scheduler` 负责模块定义、运行状态、相互独立的全局与模块级队列准入、取消、结果校验和 Cordis 服务。ToolRuntime 适配层把普通 Host 工具调用映射到运行器，独立的私有 Host 注册表则提供仅供模块使用、不会发布模型工具 schema 的工具。选择性启用的 profile 使用该注册表提供单文件开发助手：每个开发工具都会校验精确的助手模块身份，写入会比较同次运行读取的内容，固定验证命令通过受管子进程服务在根目录限定为目标 profile 的只读沙箱中执行。释放 Cordis 服务会取消排队和运行中的任务，之后的新提交会以 `blocked` 和 `disposed` 原因拒绝。该包加入 Host TypeScript 和库构建图，但仍位于 `packages/experimental` 下，并排除在受支持的 profile bundle 和发布包之外。
 
 构建产物覆盖会在 Host 库构建后，通过普通 Node 导入 `lib/index.js`。源码测试覆盖调度和 ToolRuntime 行为，不依赖构建产物。
 

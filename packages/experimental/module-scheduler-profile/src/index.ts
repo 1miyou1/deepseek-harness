@@ -1,3 +1,3 @@
 /** Private host profile layer for the experimental module scheduler. */
 
-export {}
+export { applyModule, applyTools } from './module-dev.ts'

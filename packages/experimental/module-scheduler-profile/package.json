@@ -10,6 +10,8 @@
   "exports": {
     ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
     "./network-research": { "types": "./lib/types/network-research.d.ts", "default": "./lib/types/network-research.js" },
+    "./module-dev-tools": { "types": "./lib/types/module-dev-tools.d.ts", "default": "./lib/types/module-dev-tools.js" },
+    "./module-developer": { "types": "./lib/types/module-developer.d.ts", "default": "./lib/types/module-developer.js" },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./src/*": "./src/*",
     "./package.json": "./package.json"

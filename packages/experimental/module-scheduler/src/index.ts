@@ -514,6 +514,7 @@ export class ModuleSchedulerService extends TypertRemoteService {
   readonly coordinator: ModuleCoordinator
   private readonly recentRuns = new Map<string, ModuleRunView[]>()
   private readonly activeHandles = new Map<string, ModuleRunHandle>()
+  private readonly privateHostTools = new Map<string, HostTool>()
   private readonly maxRecentRuns: number
 
   constructor(ctx: Context, config: ModuleSchedulerConfig = {}) {
@@ -534,6 +535,20 @@ export class ModuleSchedulerService extends TypertRemoteService {
    */
   runner(hostTools: ReadonlyMap<string, HostTool> = new Map()): (request: ModuleRunRequest) => ModuleRunHandle {
     return createModuleRunner(this.registry, this.coordinator, hostTools)
+  }
+
+  /**
+   * Registers one Host tool available only to module executions.
+   * @param name - Module-facing tool name.
+   * @param tool - Host implementation.
+   * @returns A disposer that removes this exact registration.
+   */
+  registerHostTool(name: string, tool: HostTool): () => void {
+    if (this.privateHostTools.has(name)) throw new Error('duplicate-module-host-tool')
+    this.privateHostTools.set(name, tool)
+    return () => {
+      if (this.privateHostTools.get(name) === tool) this.privateHostTools.delete(name)
+    }
   }
 
   /**
@@ -622,7 +637,9 @@ export class ModuleSchedulerService extends TypertRemoteService {
   run(request: ModuleRunRequest): ModuleRunHandle {
     let sequence = 0
     const hostTools = new Map<string, HostTool>()
+    for (const [name, tool] of this.privateHostTools) hostTools.set(name, tool)
     for (const { name } of this.ctx.tools.schemas()) {
+      if (hostTools.has(name)) continue
       hostTools.set(name, async (args, { run }) => {
         sequence += 1
         const outcome = await this.ctx.tools.execute({
