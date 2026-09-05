@@ -4,7 +4,16 @@
   "include": ["src"],
   "references": [
     { "path": "../../../vendor/cordis" },
+    { "path": "../agent-step-model-router" },
     { "path": "../module-scheduler" },
+    { "path": "../../core/agent" },
+    { "path": "../../core/agent-loop" },
+    { "path": "../../llm/llm" },
+    { "path": "../../core/session" },
+    { "path": "../../session/session-projection" },
+    { "path": "../../core/system-prompt" },
+    { "path": "../../core/tools" },
+    { "path": "../../util/values" },
     { "path": "../../web/web" }
   ]
 }

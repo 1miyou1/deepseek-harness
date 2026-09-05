@@ -73,7 +73,10 @@ async function setup(script: Script, options: SetupOptions = {}) {
   await ctx.plugin(SubagentRuntime)
   const disposeProvider = ctx.subagents.registerProvider({
     name: 'spawn',
-    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: false, persona: false },
+    capabilities: {
+      agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: false,
+      persona: false, scopedTools: true, stepLimit: true,
+    },
     inheritsParentContext: false,
     start: (request: ResolvedSubagentStartRequest) => startInProcessRun(request, {}),
   })
@@ -113,6 +116,34 @@ describe('in-process structured output', () => {
     expect(result.structured).toEqual({ answer: 42, note: 'done' })
     expect(acknowledgement).toEqual({ recorded: true })
     await run.dispose()
+  })
+
+  it('installs trusted run-scoped tools only on the child and enforces the step cap', async () => {
+    const { ctx, parent, adapter } = await setup([
+      toolCallResponse('c1', 'private_read', {}),
+      toolCallResponse('c2', 'private_read', {}),
+      toolCallResponse('c3', STRUCTURED_OUTPUT_TOOL, { answer: 3 }),
+    ])
+    let calls = 0
+    const run = await ctx.subagents.start('spawn', structuredRequest(parent, {
+      maxSteps: 2,
+      scopedTools: [defineContentToolFixture({
+        name: 'private_read', description: 'private child capability', parameters: {},
+        execute: () => {
+          calls += 1
+          return Promise.resolve([{ type: 'text', text: 'read' }])
+        },
+      })],
+    }))
+    expect(ctx.tools.schemas(parent).map(tool => tool.name)).not.toContain('private_read')
+    const result = await run.result
+    expect(result.stopReason).toBe('max-steps')
+    expect(result.structured).toBeUndefined()
+    expect(calls).toBe(2)
+    expect(adapter.requests).toHaveLength(2)
+    expect(adapter.requests.every(request => toolNames(request).includes('private_read'))).toBe(true)
+    await run.dispose()
+    expect(ctx.tools.schemas().map(tool => tool.name)).not.toContain('private_read')
   })
 
   it('stops the turn after a successful capture — no extra model step is spent', async () => {

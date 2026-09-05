@@ -111,7 +111,7 @@ export function ModuleSchedulerAction({
     setView(result.value)
     setModuleRef(current => result.value.modules.some(module => module.ref === current && module.runnableFromBrowser)
       ? current
-      : (result.value.modules.find(module => module.runnableFromBrowser && module.tools.length === 0)?.ref ?? ''))
+      : (result.value.modules.find(module => module.runnableFromBrowser)?.ref ?? ''))
     setError(null)
     return true
   }, [load, sessionId])

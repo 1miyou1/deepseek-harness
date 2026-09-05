@@ -17,8 +17,11 @@ describe('Module Scheduler host profile bundle', () => {
     expect(manifest.private).toBe(true)
     expect(manifest.publishConfig).toBeUndefined()
     expect(manifest.dependencies).toEqual({
+      '@deepseek-ai/dsh-experimental-agent-step-model-router': 'workspace:^',
       '@deepseek-ai/dsh-experimental-android-environment-diagnostics-profile': 'workspace:^',
       '@deepseek-ai/dsh-experimental-module-scheduler': 'workspace:^',
+      '@deepseek-ai/dsh-tools': 'workspace:^',
+      '@deepseek-ai/dsh-util-values': 'workspace:^',
       '@deepseek-ai/dsh-web': 'workspace:^',
     })
     expect(manifest.dsh?.bundle?.patch).toBe('./cordis.patch.yml')
@@ -28,7 +31,17 @@ describe('Module Scheduler host profile bundle', () => {
     expect(parsed.flatMap(patch => patch.insert ?? [])).toEqual([{
       id: 'module-scheduler',
       name: '@deepseek-ai/dsh-experimental-module-scheduler',
-      config: { maxConcurrent: 4, queueLimit: 32, timeoutMs: 30_000, maxRecentRuns: 50 },
+      config: {
+        maxConcurrent: 4,
+        queueLimit: 32,
+        timeoutMs: 30_000,
+        maxRecentRuns: 50,
+        agentStepModelRoutes: {
+          luna: { provider: 'openai-codex', model: 'gpt-5.6-luna' },
+          terra: { provider: 'openai-codex', model: 'gpt-5.6-terra' },
+          sol: { provider: 'openai-codex', model: 'gpt-5.6-sol' },
+        },
+      },
     }, {
       id: 'module-network-research',
       name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/network-research',

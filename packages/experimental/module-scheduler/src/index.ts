@@ -1,6 +1,10 @@
 import { Context } from '@deepseek-ai/cordis'
+import { installModelSelection, type Agent } from '@deepseek-ai/dsh-agent'
+import * as ModelRouter from '@deepseek-ai/dsh-experimental-agent-step-model-router'
+import type { TierRoutes } from '@deepseek-ai/dsh-experimental-agent-step-model-router'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
-import type {} from '@deepseek-ai/dsh-tools'
+import type { SubagentRun, SubagentRuntime } from '@deepseek-ai/dsh-subagent'
+import { defineTool, type ObjectJsonSchema, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -53,6 +57,20 @@ export interface ModulePolicy {
 /** Tool callable by a module execution. */
 export type ModuleTool = (args: unknown) => Promise<unknown>
 
+/** One bounded managed-Agent request available to an Agent-originated module run. */
+export interface ManagedModuleAgentRequest {
+  task: string
+  tools: readonly string[]
+  outputSchema: ModuleSchema
+  maxSteps: number
+  maxTokensPerStep: number
+}
+
+/** Narrow managed-Agent capability; model route is always inherited from the initiating Agent. */
+export interface ManagedModuleAgent {
+  run(request: ManagedModuleAgentRequest): Promise<unknown>
+}
+
 /** Context supplied to a module execution. */
 export interface ModuleExecutionContext {
   sessionId: string
@@ -61,6 +79,7 @@ export interface ModuleExecutionContext {
   input: unknown
   signal: AbortSignal
   tools: ReadonlyMap<string, ModuleTool>
+  agent?: ManagedModuleAgent
 }
 
 /** Immutable registered module definition. */
@@ -74,6 +93,8 @@ export interface ModuleDefinition {
   inputSchema: ModuleSchema
   outputSchema: ModuleSchema
   resourcePolicy: ModulePolicy
+  /** Whether execution requires an initiating Agent and its managed child capability. */
+  requiresAgent?: boolean
   execute: (context: ModuleExecutionContext) => Promise<unknown>
 }
 
@@ -140,10 +161,12 @@ export type ModuleCancelResult =
   | { ok: true; value: boolean }
   | { ok: false; error: ModuleConsoleError }
 
-/** Scheduler-wide optional limits and run history retention. */
+/** Scheduler-wide optional limits, run history retention, and module-child model routes. */
 export interface ModuleSchedulerConfig extends Partial<ModulePolicy> {
   /** Maximum terminal run records retained per session. */
   maxRecentRuns?: number
+  /** Exact model routes installed only in module-managed child Agents. */
+  agentStepModelRoutes?: TierRoutes
 }
 
 /** Promise handle for one isolated module run. */
@@ -156,10 +179,14 @@ export type ModuleRunHandle = Promise<ModuleRunResult> & {
 export interface HostToolContext {
   request: ModuleRunRequest
   run: ModuleRunResult & { signal: AbortSignal }
+  agent?: Agent
 }
 
 /** Host tool adapter exposed to module runners. */
 export type HostTool = (args: unknown, context: HostToolContext) => Promise<unknown>
+
+/** Trusted factory that projects one private module tool into a child-only ToolRuntime definition. */
+export type ManagedAgentToolFactory = (execute: ModuleTool) => ToolDefinition
 
 const terminal = new Set<ModuleStatus>(['succeeded', 'failed', 'blocked', 'cancelled', 'timed_out'])
 
@@ -306,6 +333,7 @@ interface Entry {
   execute: () => Promise<unknown>
   policy: ModulePolicy
   outputSchema: ModuleSchema
+  drainOnAbort: boolean
 }
 
 /** Bounded coordinator for isolated module runs. */
@@ -345,6 +373,7 @@ export class ModuleCoordinator {
     policy: ModulePolicy,
     outputSchema: ModuleSchema,
     execute: (run: { result: ModuleRunResult; signal: AbortSignal }) => Promise<unknown>,
+    drainOnAbort: boolean = false,
   ): ModuleRunHandle {
     if (this.disposed) return blockedRun(request, 'disposed')
     const result: ModuleRunResult = {
@@ -367,6 +396,7 @@ export class ModuleCoordinator {
       execute: () => execute({ result, signal: controller.signal }),
       policy,
       outputSchema,
+      drainOnAbort,
     }
     promise.runId = result.runId
     promise.cancel = () => this.cancel(result.runId)
@@ -425,7 +455,14 @@ export class ModuleCoordinator {
           reject(Object.assign(new Error(reason), { code }))
         }, { once: true })
       })
-      const output = await Promise.race([entry.execute(), aborted])
+      const execution = entry.execute()
+      let output: unknown
+      try {
+        output = await Promise.race([execution, aborted])
+      } catch (error: unknown) {
+        if (entry.drainOnAbort && entry.controller.signal.aborted) await execution.catch(() => undefined)
+        throw error
+      }
       const outputErrors = validateSchema(entry.outputSchema, output)
       if (outputErrors.length > 0) throw Object.assign(new Error('output-schema-invalid'), { code: 'failed' })
       final = { ...entry.result, status: 'succeeded', validated: true, output }
@@ -515,14 +552,30 @@ export class ModuleSchedulerService extends TypertRemoteService {
   private readonly recentRuns = new Map<string, ModuleRunView[]>()
   private readonly activeHandles = new Map<string, ModuleRunHandle>()
   private readonly privateHostTools = new Map<string, HostTool>()
+  private readonly managedAgentTools = new Map<string, ManagedAgentToolFactory>()
   private readonly maxRecentRuns: number
+  private readonly agentStepModelRoutes: TierRoutes | undefined
 
   constructor(ctx: Context, config: ModuleSchedulerConfig = {}) {
     super(ctx, 'moduleScheduler')
-    const { maxRecentRuns = 50, ...limits } = config
+    const { maxRecentRuns = 50, agentStepModelRoutes, ...limits } = config
+    this.agentStepModelRoutes = agentStepModelRoutes
     if (!Number.isSafeInteger(maxRecentRuns) || maxRecentRuns < 0) throw new Error('invalid-run-history-limit')
     this.maxRecentRuns = maxRecentRuns
     this.coordinator = new ModuleCoordinator(limits)
+    ctx.tools.register(defineTool({
+      name: 'module_run',
+      description: 'Run one registered module with schema-validated input and return its validated structured result.',
+      parameters: {
+        moduleRef: { type: 'string', required: true, description: 'Versioned module reference from the registered module catalog.' },
+        input: { type: 'json', required: true, description: 'Input accepted by the selected module schema.' },
+      },
+      output: {
+        schema: { type: 'json' },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      execute: async (args, exec) => await this.runFromTool(args.moduleRef, args.input, exec),
+    }))
     ctx.effect(() => {
       return () => { this.coordinator.dispose() }
     }, 'module-scheduler: dispose runs')
@@ -543,11 +596,13 @@ export class ModuleSchedulerService extends TypertRemoteService {
    * @param tool - Host implementation.
    * @returns A disposer that removes this exact registration.
    */
-  registerHostTool(name: string, tool: HostTool): () => void {
+  registerHostTool(name: string, tool: HostTool, managedAgentTool?: ManagedAgentToolFactory): () => void {
     if (this.privateHostTools.has(name)) throw new Error('duplicate-module-host-tool')
     this.privateHostTools.set(name, tool)
+    if (managedAgentTool !== undefined) this.managedAgentTools.set(name, managedAgentTool)
     return () => {
       if (this.privateHostTools.get(name) === tool) this.privateHostTools.delete(name)
+      if (this.managedAgentTools.get(name) === managedAgentTool) this.managedAgentTools.delete(name)
     }
   }
 
@@ -578,7 +633,7 @@ export class ModuleSchedulerService extends TypertRemoteService {
     } catch (error: unknown) {
       return failure(errorMessage(error))
     }
-    if (!definition.tools.every(tool => this.privateHostTools.has(tool))) return failure('module-requires-agent')
+    if (definition.requiresAgent || !definition.tools.every(tool => this.privateHostTools.has(tool))) return failure('module-requires-agent')
     if (validateSchema(definition.inputSchema, request.input ?? {}).length > 0) return failure('input-schema-invalid')
 
     const handle = this.run({ ...request, sessionId })
@@ -629,17 +684,93 @@ export class ModuleSchedulerService extends TypertRemoteService {
     }))
   }
 
+  private managedAgent(agent: Agent, moduleTools: ReadonlyMap<string, ModuleTool>, signal: AbortSignal): ManagedModuleAgent {
+    return {
+      run: async (request) => {
+        if (request.task.trim() === '') throw new Error('managed-agent-task-empty')
+        if (!Number.isSafeInteger(request.maxSteps) || request.maxSteps < 1) throw new Error('managed-agent-max-steps-invalid')
+        if (!Number.isSafeInteger(request.maxTokensPerStep) || request.maxTokensPerStep < 1) throw new Error('managed-agent-max-tokens-invalid')
+        const subagents: SubagentRuntime | undefined = this.ctx.get('subagents')
+        if (subagents === undefined) throw new Error('managed-agent-unavailable')
+        const scopedTools = request.tools.map((name) => {
+          const execute = moduleTools.get(name)
+          const factory = this.managedAgentTools.get(name)
+          if (execute === undefined || factory === undefined) throw new Error(`managed-agent-tool-unavailable:${name}`)
+          return factory(execute)
+        })
+        let run: SubagentRun | undefined
+        try {
+          run = await subagents.start('spawn', {
+            label: 'module managed agent',
+            prompt: [{ type: 'text', text: request.task }],
+            parent: agent,
+            signal,
+            agentOptions: { maxTokens: request.maxTokensPerStep },
+            outputSchema: request.outputSchema as ObjectJsonSchema,
+            toolFilter: { allow: [] },
+            scopedTools,
+            ...this.agentStepModelRoutes === undefined ? {} : {
+              scopedSetup: async (childCtx: Context) => {
+                const child = childCtx.agent as Agent
+                const { provider, model, reasoningEffort } = child.options
+                installModelSelection(child.ctx, {
+                  current: provider === undefined || model === undefined ? undefined : {
+                    provider,
+                    model,
+                    ...reasoningEffort === undefined ? {} : { reasoningEffort },
+                  },
+                  assembled: undefined,
+                })
+                await child.ctx.plugin(ModelRouter, this.agentStepModelRoutes)
+              },
+            },
+            maxSteps: request.maxSteps,
+          })
+          const result = await run.result
+          if (result.stopReason !== 'completed') throw new Error(`managed-agent-${result.stopReason}`)
+          if (result.structured === undefined) throw new Error('managed-agent-structured-output-missing')
+          return result.structured
+        } finally {
+          await run?.dispose()
+        }
+      },
+    }
+  }
+
+  /** Run a module on behalf of one model-originated tool call. */
+  private async runFromTool(moduleRef: string, input: JsonValue, exec: ToolRunContext): Promise<JsonValue> {
+    const agent = exec.agent
+    if (!agent) throw new Error('module_run requires an initiating agent')
+    const handle = this.run({
+      sessionId: agent.session.id,
+      taskId: exec.callId,
+      moduleRef,
+      input,
+    }, agent)
+    const cancel = (): void => { handle.cancel() }
+    if (exec.signal.aborted) cancel()
+    else exec.signal.addEventListener('abort', cancel, { once: true })
+    try {
+      return structuredClone(await handle) as unknown as JsonValue
+    } finally {
+      exec.signal.removeEventListener('abort', cancel)
+    }
+  }
+
   /**
    * Runs one registered module through the host ToolRuntime.
    * @param request - Session, task, module reference, and schema-checked input.
+   * @param agent - Initiating Agent whose scoped ordinary tools and policies apply.
    * @returns A handle that resolves to a validated success or an explicit terminal failure.
    */
-  run(request: ModuleRunRequest): ModuleRunHandle {
+  run(request: ModuleRunRequest, agent?: Agent): ModuleRunHandle {
     let sequence = 0
     const hostTools = new Map<string, HostTool>()
-    for (const [name, tool] of this.privateHostTools) hostTools.set(name, tool)
-    for (const { name } of this.ctx.tools.schemas()) {
-      if (hostTools.has(name)) continue
+    for (const [name, tool] of this.privateHostTools) {
+      hostTools.set(name, (args, context) => tool(args, { ...context, ...agent === undefined ? {} : { agent } }))
+    }
+    for (const { name } of this.ctx.tools.schemas(agent)) {
+      if (name === 'module_run' || hostTools.has(name)) continue
       hostTools.set(name, async (args, { run }) => {
         sequence += 1
         const outcome = await this.ctx.tools.execute({
@@ -647,12 +778,47 @@ export class ModuleSchedulerService extends TypertRemoteService {
           name,
           arguments: args,
           signal: run.signal,
+          ...agent === undefined ? {} : { agent },
         })
         if (outcome.isError) throw new Error(outcome.error.message)
         return outcome.value
       })
     }
-    return this.runner(hostTools)(request)
+    const baseRunner = this.runner(hostTools)
+    if (agent === undefined) return baseRunner(request)
+    let definition: ModuleDefinition
+    try {
+      definition = this.registry.get(request.moduleRef)
+    } catch {
+      return baseRunner(request)
+    }
+    const original = definition.execute
+    const wrapped: ModuleDefinition = {
+      ...definition,
+      execute: context => original({ ...context, agent: this.managedAgent(agent, context.tools, context.signal) }),
+    }
+    const input = request.input ?? {}
+    if (validateSchema(wrapped.inputSchema, input).length > 0) return blockedRun(request, 'input-schema-invalid')
+    if (wrapped.tools.some(tool => !hostTools.has(tool))) return blockedRun(request, 'tool-not-available')
+    return this.coordinator.run(request, wrapped.resourcePolicy, wrapped.outputSchema, ({ result, signal }) => {
+      const moduleTools = new Map(wrapped.tools.map((name): [string, ModuleTool] => [
+        name,
+        async (args) => {
+          if (signal.aborted) throw Object.assign(new Error('cancelled'), { code: 'cancelled' })
+          const tool = hostTools.get(name)
+          if (!tool) throw new Error('tool-not-available')
+          return tool(args, { request, run: { ...result, signal } })
+        },
+      ]))
+      return wrapped.execute({
+        sessionId: result.sessionId,
+        taskId: result.taskId,
+        runId: result.runId,
+        input,
+        signal,
+        tools: moduleTools,
+      })
+    }, wrapped.requiresAgent === true)
   }
 }
 

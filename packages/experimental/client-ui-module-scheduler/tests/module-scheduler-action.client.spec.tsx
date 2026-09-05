@@ -22,8 +22,8 @@ const runnable = {
   inputSchema: { type: 'object' as const }, runnableFromBrowser: true,
 }
 const assisted = {
-  ref: 'search@1', id: 'search', version: '1', displayName: '搜索', description: '需要工具支持', tools: ['web_search'],
-  inputSchema: { type: 'object' as const }, runnableFromBrowser: false,
+  ref: 'search@1', id: 'search', version: '1', displayName: '搜索', description: '需要私有工具支持', tools: ['private_search'],
+  inputSchema: { type: 'object' as const }, runnableFromBrowser: true,
 }
 const view: ModuleSchedulerView = {
   modules: [runnable, assisted],
@@ -87,10 +87,19 @@ describe('ModuleSchedulerAction', () => {
     expect(start).not.toHaveBeenCalled()
   })
 
-  it('disables modules requiring tools', async () => {
-    open()
+  it('selects a browser-runnable module even when it declares private Host tools', async () => {
+    const start = vi.fn().mockResolvedValue({ ok: true, value: { ok: true, value: view.runs[0] } })
+    open(actions({ load: () => Promise.resolve({ ok: true, value: { modules: [assisted], runs: [] } }), start }))
     const option = await screen.findByRole<HTMLOptionElement>('option', { name: /搜索/u })
-    expect(option.disabled).toBe(true)
+    expect(option.disabled).toBe(false)
+    expect(screen.getByRole<HTMLSelectElement>('combobox', { name: zh.module }).value).toBe(assisted.ref)
+    fireEvent.change(screen.getByLabelText(zh.taskId), { target: { value: 'task-private' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.start }))
+    await waitFor(() => {
+      expect(start).toHaveBeenCalledWith(SESSION, {
+        taskId: 'task-private', moduleRef: assisted.ref, input: {},
+      })
+    })
   })
 
   it('starts a selected module and refreshes current-session runs', async () => {

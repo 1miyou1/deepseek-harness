@@ -119,12 +119,29 @@ export async function startInProcessRun(
   const inherited = captureDelegatedPolicyOverrides(parent)
 
   let structured: StructuredAttachment | undefined
-  const setup = (childCtx: Context): void => {
+  const stepLimit = { reached: false }
+  const setup = async (childCtx: Context): Promise<void> => {
     appendDelegatedPolicyOverrides((childCtx.agent as Agent).session, inherited)
     applyChildComposition(childCtx, parent, {
       persona: request.persona,
       toolFilter: request.toolFilter,
     })
+    for (const tool of request.scopedTools ?? []) childCtx.tools.register(tool)
+    await request.scopedSetup?.(childCtx)
+    const maxSteps = request.maxSteps
+    if (maxSteps !== undefined) {
+      let entered = 0
+      childCtx.on('agent/pre-step', async (_payload, next) => {
+        const decision = await next()
+        if (decision.kind !== 'enter') return decision
+        if (entered >= maxSteps) {
+          stepLimit.reached = true
+          return { kind: 'reject' }
+        }
+        entered += 1
+        return decision
+      })
+    }
     if (request.outputSchema !== undefined) {
       structured = attachStructuredRuntime(childCtx, request.outputSchema)
     }
@@ -147,6 +164,7 @@ export async function startInProcessRun(
     childId,
     activationBoundary,
     structured,
+    stepLimit,
   )
 }
 
@@ -161,6 +179,7 @@ function drivePublishedRun(
   childId: SessionId,
   boundary: SessionLogOffsetType,
   structured: StructuredAttachment | undefined,
+  stepLimit: { reached: boolean },
 ): SubagentRun {
   const child = handle.agent
   const flags = { cancelled: false }
@@ -180,12 +199,15 @@ function drivePublishedRun(
         child.followup(createUserMessage({ content: prompt, source: { kind: 'user' } }))
         await child.whenIdle()
       }
-      return readResult(
+      const settled = readResult(
         child,
         boundary,
         flags.cancelled,
         structured ? { captured: structured.captured() } : undefined,
       )
+      return stepLimit.reached
+        ? { ...settled, structured: undefined, stopReason: 'max-steps' }
+        : settled
     } finally {
       signal.removeEventListener('abort', onAbort)
     }

@@ -4,7 +4,9 @@ import { open, readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
-import type { HostTool, ModuleDefinition } from '@deepseek-ai/dsh-experimental-module-scheduler'
+import type { HostTool, ManagedAgentToolFactory, ModuleDefinition, ModuleTool } from '@deepseek-ai/dsh-experimental-module-scheduler'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 interface ValidationRuntime {
   sandbox: { confine(argv: readonly string[], policy: { mode: 'read-only' | 'workspace-write'; workspaceRoot: string }): { argv: string[] } }
   subprocess: { spawn(spec: {
@@ -56,7 +58,9 @@ async function existingFile(root: string, id: string, file: string): Promise<str
 }
 
 function assertDeveloper(context: { request: { moduleRef: string } }): void {
-  if (context.request.moduleRef !== 'module-developer@1.0.0') throw new Error('module-dev-caller-forbidden')
+  if (!['module-developer@1.0.0', 'module-developer@2.0.0'].includes(context.request.moduleRef)) {
+    throw new Error('module-dev-caller-forbidden')
+  }
 }
 
 async function replaceExistingFile(root: string, id: string, file: string, expectedContent: string, content: string): Promise<number> {
@@ -100,6 +104,32 @@ async function validate(root: string, id: string, action: 'test' | 'lint' | 'typ
   }
 }
 
+export const moduleDevToolFactories: ReadonlyMap<string, ManagedAgentToolFactory> = new Map([
+  ['module-dev/read', execute => defineModuleTool('module-dev/read', '读取目标模块中的已有文件。', {
+    id: { type: 'string', required: true }, file: { type: 'string', required: true },
+  }, execute)],
+  ['module-dev/write', execute => defineModuleTool('module-dev/write', '比较后完整替换目标模块中的已有文件。', {
+    id: { type: 'string', required: true }, file: { type: 'string', required: true },
+    expectedContent: { type: 'string', required: true }, content: { type: 'string', required: true },
+  }, execute)],
+  ...(['test', 'lint', 'typecheck'] as const).map(action => [
+    `module-dev/${action}`,
+    (execute: ModuleTool) => defineModuleTool(`module-dev/${action}`, `运行固定的 ${action} 验证。`, {
+      id: { type: 'string', required: true },
+    }, execute),
+  ] as const),
+])
+
+function defineModuleTool(name: string, description: string, parameters: Record<string, { type: 'string'; required: true }>, execute: ModuleTool) {
+  return defineTool({
+    name,
+    description,
+    parameters,
+    output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    execute: args => execute(args) as Promise<JsonValue>,
+  })
+}
+
 export function createModuleDevHostTools(root: string, runtime?: ValidationRuntime): ReadonlyMap<string, HostTool> {
   return new Map<string, HostTool>([
     ['module-dev/read', async (args, context) => {
@@ -126,7 +156,7 @@ export function createModuleDevHostTools(root: string, runtime?: ValidationRunti
 export function applyTools(ctx: Context): void {
   const runtime = ctx as Context & ValidationRuntime
   for (const [name, tool] of createModuleDevHostTools(process.cwd(), runtime)) {
-    const dispose = ctx.moduleScheduler.registerHostTool(name, tool)
+    const dispose = ctx.moduleScheduler.registerHostTool(name, tool, moduleDevToolFactories.get(name))
     ctx.effect(() => dispose, `${name}: registration`)
   }
 }
@@ -158,6 +188,47 @@ export function applyModule(ctx: Context): void {
       return { ok, results }
     },
   }
-  const ref = ctx.moduleScheduler.registry.register(definition)
-  ctx.effect(() => () => { ctx.moduleScheduler.registry.unregister(ref) }, 'module-developer: registration')
+  const managedDefinition: ModuleDefinition = {
+    id: 'module-developer',
+    version: '2.0.0',
+    displayName: '受管模块开发助手',
+    description: '由继承当前模型的受管子代理在受限模块目录中多步修改并验证实验性模块',
+    tools: definition.tools,
+    inputSchema: {
+      type: 'object', required: ['id', 'task'], additionalProperties: false,
+      properties: { id: { type: 'string' }, task: { type: 'string' } },
+    },
+    outputSchema: {
+      type: 'object', required: ['ok', 'changedFiles', 'checks', 'summary'], additionalProperties: false,
+      properties: {
+        ok: { type: 'boolean' },
+        changedFiles: { type: 'array', items: { type: 'string' } },
+        checks: { type: 'array', items: {
+          type: 'object', required: ['name', 'ok'], additionalProperties: false,
+          properties: { name: { type: 'string' }, ok: { type: 'boolean' } },
+        } },
+        summary: { type: 'string' },
+      },
+    },
+    resourcePolicy: definition.resourcePolicy,
+    requiresAgent: true,
+    execute: async ({ input, agent }) => {
+      if (agent === undefined) throw new Error('module-requires-agent')
+      const request = input as { id: string; task: string }
+      return agent.run({
+        task: `目标模块 ID：${request.id}\n任务：${request.task}\n只能操作该模块中的已有文件。完成前必须运行 test、lint、typecheck，并通过 structured_output 返回结果。`,
+        tools: definition.tools,
+        outputSchema: managedDefinition.outputSchema,
+        maxSteps: 12,
+        maxTokensPerStep: 4096,
+      })
+    },
+  }
+  const refs = [
+    ctx.moduleScheduler.registry.register(managedDefinition),
+    ctx.moduleScheduler.registry.register(definition),
+  ]
+  ctx.effect(() => () => {
+    for (const ref of refs) ctx.moduleScheduler.registry.unregister(ref)
+  }, 'module-developer: registration')
 }

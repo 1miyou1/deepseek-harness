@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Private host profile layer for the experimental module scheduler service, its `network-research` workload, and a restricted module-development assistant. It is an opt-in layer and is not included in official shipped profiles.
+Private host profile layer for deterministic Luna, Terra, and Sol Agent routing, the experimental module scheduler service, its `network-research` workload, and a restricted module-development assistant. It is an opt-in layer and is not included in official shipped profiles.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ Private host profile layer for the experimental module scheduler service, its `n
 <a id="usage"></a>
 ## Usage
 
-Add this bundle to a source-checkout profile to load the scheduler and register `network-research@1.0.0`. The module developer is exported but deliberately absent from the default patch. Opt in by adding both entries to a later profile patch:
+Add this bundle to a source-checkout profile to enable configured Luna, Terra, and Sol step routing, load the scheduler, and register `network-research@1.0.0`. The routing plugin records its reason while `request/header` records the route actually used. The module developer is exported but deliberately absent from the default patch. Opt in by adding both entries to a later profile patch:
 
 ```yaml
 - insert:
@@ -33,7 +33,7 @@ Add this bundle to a source-checkout profile to load the scheduler and register 
       name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/module-developer'
 ```
 
-The development assistant reads and compare-and-replaces one existing file inside `packages/experimental/<id>-profile`, then runs fixed `test`, `lint`, and no-emit `typecheck` actions. The Host rejects invalid module ids, parent or absolute paths, symbolic-link escapes, sensitive filenames, missing files, and content changed since the read. Validation runs through the managed subprocess service with a credential-scrubbed environment, bounded output, run cancellation, and a read-only Host sandbox rooted at the target profile.
+The current conversation model can invoke `module-developer@1.0.0` for one prescribed compare-and-replace or `module-developer@2.0.0` for a bounded multi-step task. Version 2 starts one fresh in-process child that inherits the initiating model route, sees only the five child-scoped development tools plus `structured_output`, and runs at most 12 model steps with 4,096 output tokens per request. The Host keeps the same module-id, path, symlink, sensitive-file, existing-file, compare-before-write, sandbox, subprocess, bounded-output, and cancellation restrictions for both versions.
 
 <a id="model-experience"></a>
 ## Model Experience
@@ -42,7 +42,7 @@ The development assistant reads and compare-and-replaces one existing file insid
 
 #### What the model sees
 
-The default bundle changes profile composition and registers a host-side `ctx.web` workload without loading the development assistant. After explicit opt-in, only `module-developer@1.0.0` can call its five private tools; they are not added to the ordinary model tool catalog, and the bundle adds no model prompt.
+The default bundle changes profile composition and registers a host-side `ctx.web` workload without loading the development assistant. After explicit opt-in, the parent model reaches both developer versions through the scheduler's single `module_run` tool. Private development tools stay out of the parent catalog; version 2 projects them only into its managed child's scope.
 
 #### Token effect
 
@@ -58,7 +58,7 @@ The private tools do not change the stable model request prefix.
 
 - **Two explicit opt-ins** — official shipped profiles do not load this bundle, and the bundle's default patch does not load the development assistant.
 - **No persistence** — the layer does not persist process or browser state.
-- **Single-file replacement** — the first assistant pass compare-and-replaces one existing module file and runs fixed validation; it does not create files, emit typecheck build artifacts, build a complete module, or iterate autonomously.
+- **Versioned execution modes** — `module-developer@1.0.0` performs one prescribed single-file replacement; `module-developer@2.0.0` delegates a bounded multi-step task to one fresh child, but it does not create files, use Agent Teams, use continuable children, or claim a cumulative token budget.
 
 <a id="dev-note"></a>
 ### Dev Note

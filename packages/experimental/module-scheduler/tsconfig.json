@@ -5,9 +5,15 @@
   "references": [
     { "path": "../../../vendor/cosmokit" },
     { "path": "../../../vendor/cordis" },
+    { "path": "../../core/agent" },
+    { "path": "../../core/agent-loop" },
     { "path": "../../llm/llm" },
+    { "path": "../../core/session" },
+    { "path": "../../session/session-projection" },
     { "path": "../../core/tools" },
     { "path": "../../core/system-prompt" },
+    { "path": "../../subagent/subagent" },
+    { "path": "../agent-step-model-router" },
     { "path": "../../util/crypto" }
   ]
 }

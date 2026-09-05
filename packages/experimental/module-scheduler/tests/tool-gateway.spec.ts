@@ -1,5 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -21,7 +23,96 @@ async function setup() {
   return ctx
 }
 
+function agent(id = 'session-a'): Agent {
+  return { id: id as SessionId, session: { id: id as SessionId } } as Agent
+}
+
 describe('module scheduler DSH tool gateway', () => {
+  it('registers one model-visible module tool and derives trusted run identity from its caller', async () => {
+    const ctx = await setup()
+    ctx.moduleScheduler.registry.register({
+      id: 'gateway', version: '1.0.0', displayName: '网关', description: '调用模块网关', tools: [],
+      inputSchema: schema, outputSchema: schema,
+      resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 100 },
+      execute: async ({ sessionId, taskId }) => ({ value: `${sessionId}:${taskId}` }),
+    })
+    const caller = agent()
+    const result = await ctx.tools.execute({
+      callId: ToolCallId('call-a'), name: 'module_run',
+      arguments: { moduleRef: 'gateway@1.0.0', input: { value: 'hello' } },
+      agent: caller, signal: new AbortController().signal,
+    })
+
+    expect(ctx.tools.schemas(caller).find(tool => tool.name === 'module_run')).toMatchObject({
+      parameters: { required: ['moduleRef', 'input'] },
+    })
+    expect(result).toMatchObject({
+      isError: false,
+      value: {
+        sessionId: 'session-a', taskId: 'call-a', moduleRef: 'gateway@1.0.0',
+        status: 'succeeded', validated: true, output: { value: 'session-a:call-a' },
+      },
+    })
+  })
+
+  it('runs module tools through the initiating Agent scope', async () => {
+    const ctx = await setup()
+    const caller = agent()
+    ctx.tools.register(defineTool({
+      name: 'echo', description: 'global echo', parameters: {},
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+      execute: async () => 'global',
+    }))
+    ctx.moduleScheduler.registry.register({
+      id: 'gateway', version: '1.0.0', displayName: '网关', description: '调用工具网关', tools: ['echo'],
+      inputSchema: schema, outputSchema: schema,
+      resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 100 },
+      execute: async ({ tools }) => ({ value: await tools.get('echo')?.({}) }),
+    })
+    let seen: Agent | undefined
+    ctx.on('tools/pre-execute', async (exec, next) => {
+      if (exec.name === 'echo') seen = exec.agent
+      return await next()
+    })
+
+    const result = await ctx.tools.execute({
+      callId: ToolCallId('call-a'), name: 'module_run',
+      arguments: { moduleRef: 'gateway@1.0.0', input: { value: 'hello' } },
+      agent: caller, signal: new AbortController().signal,
+    })
+
+    expect(result).toMatchObject({ isError: false, value: { status: 'succeeded', output: { value: 'global' } } })
+    expect(seen).toBe(caller)
+  })
+
+  it('cancels a module run when the outer model tool call is aborted', async () => {
+    const ctx = await setup()
+    const started = Promise.withResolvers<undefined>()
+    ctx.moduleScheduler.registry.register({
+      id: 'slow', version: '1.0.0', displayName: '慢模块', description: '等待取消信号', tools: [],
+      inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+      outputSchema: schema,
+      resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 1_000 },
+      execute: async ({ signal }) => {
+        started.resolve(undefined)
+        await new Promise<undefined>((resolve) => {
+          signal.addEventListener('abort', () => { resolve(undefined) }, { once: true })
+        })
+        return { value: 'late' }
+      },
+    })
+    const controller = new AbortController()
+    const pending = ctx.tools.execute({
+      callId: ToolCallId('call-a'), name: 'module_run',
+      arguments: { moduleRef: 'slow@1.0.0', input: {} },
+      agent: agent(), signal: controller.signal,
+    })
+    await started.promise
+    controller.abort('cancelled')
+
+    await expect(pending).resolves.toMatchObject({ isError: true, error: { info: { code: 'ABORTED' } } })
+  })
+
   it('routes an allowlisted module call through ToolRuntime', async () => {
     const ctx = await setup()
     ctx.tools.register(defineTool({

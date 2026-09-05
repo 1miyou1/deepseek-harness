@@ -8,6 +8,10 @@
         queueLimit: 32
         timeoutMs: 30000
         maxRecentRuns: 50
+        agentStepModelRoutes:
+          luna: { provider: openai-codex, model: gpt-5.6-luna }
+          terra: { provider: openai-codex, model: gpt-5.6-terra }
+          sol: { provider: openai-codex, model: gpt-5.6-sol }
     - id: module-network-research
       name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/network-research'
     - id: android-environment-diagnostics

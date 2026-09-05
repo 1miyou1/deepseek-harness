@@ -9,11 +9,12 @@
  * @module @deepseek-ai/dsh-subagent/types
  */
 
+import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import type { ObjectJsonSchema, ToolRestriction } from '@deepseek-ai/dsh-tools'
+import type { ObjectJsonSchema, ToolDefinition, ToolRestriction } from '@deepseek-ai/dsh-tools'
 import type { SubagentDescriptorData } from './descriptor.ts'
 
 /** Identifies one accepted subagent run across its lifecycle event pair. */
@@ -89,6 +90,9 @@ export interface SubagentCapabilities {
   readonly depthLimit: boolean
   readonly toolFilter: boolean
   readonly persona: boolean
+  readonly scopedTools?: boolean
+  readonly scopedSetup?: boolean
+  readonly stepLimit?: boolean
 }
 
 /**
@@ -154,6 +158,12 @@ export interface SubagentStartRequest {
    * persona (strict `{{…}}` interpolation against the registered variables).
    */
   readonly persona?: string
+  /** Trusted Host-only tools registered in this one-shot child's own scope. */
+  readonly scopedTools?: readonly ToolDefinition[]
+  /** Trusted Host-only composition applied in this one-shot child's own scope before its first step. */
+  readonly scopedSetup?: (ctx: Context) => void | Promise<void>
+  /** Maximum model steps in this one-shot child. */
+  readonly maxSteps?: number
 }
 
 /**
@@ -216,6 +226,8 @@ export interface SubagentStopReasonMap {
   'max-tokens': 'max-tokens'
   /** The child declined the task. */
   refusal: 'refusal'
+  /** The child reached its caller-declared model-step ceiling. */
+  'max-steps': 'max-steps'
 }
 
 /** The union over {@link SubagentStopReasonMap} — widens automatically as backends merge in variants. */

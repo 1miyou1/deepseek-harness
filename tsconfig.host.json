@@ -295,6 +295,7 @@
     { "path": "./packages/jobs/jobs-local" },
     { "path": "./packages/jobs/tool-jobs" },
     { "path": "./packages/experimental/agent-team" },
+    { "path": "./packages/experimental/agent-step-model-router" },
     { "path": "./packages/experimental/module-scheduler" },
     { "path": "./packages/experimental/android-tooling" },
     { "path": "./packages/experimental/android-environment-diagnostics" },

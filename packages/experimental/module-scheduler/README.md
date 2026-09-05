@@ -26,7 +26,7 @@ This private incubation package registers `ctx.moduleScheduler`. It shares immut
 <a id="service-contract"></a>
 ## Service contract
 
-Loading the default export registers one registry and one in-process coordinator. Call `ctx.moduleScheduler.run(request)` with `sessionId`, `taskId`, and a versioned `moduleRef`. The returned promise also exposes its `runId` and a run-scoped `cancel()` operation. Disposing the plugin fiber cancels queued and active runs, releases the coordinator, and rejects later calls as `blocked` with reason `disposed`; the service is then removed.
+Loading the default export registers one registry, one in-process coordinator, and the model-visible `module_run` tool. Direct Host callers pass `sessionId`, `taskId`, and a versioned `moduleRef` to `ctx.moduleScheduler.run(request)`. Model calls pass only `moduleRef` and `input`; the tool derives the trusted session and task identities from its initiating Agent and call. The returned promise also exposes its `runId` and a run-scoped `cancel()` operation. Disposing the plugin fiber cancels queued and active runs, releases the coordinator, and rejects later calls as `blocked` with reason `disposed`; the service is then removed.
 
 -----
 
@@ -35,8 +35,9 @@ Loading the default export registers one registry and one in-process coordinator
 
 - Every invocation receives a fresh run identity, abort signal, and result.
 - Global and per-module concurrency and queue limits are enforced independently; excess work is returned as `blocked`.
-- Module code receives only declared tools. Ordinary tools pass through DSH `ToolRuntime` validation, policy, approval, event, and cancellation processing.
-- `registerHostTool()` adds a process-local tool visible only to module runs. Private Host tools do not enter the ordinary model tool catalog and take precedence over an ordinary tool with the same name. Browser controls may run a module only when every declared tool is present in this private registry; ordinary model tools remain unavailable there.
+- Module code receives only declared tools. A model-originated run resolves and executes ordinary tools in the initiating Agent's scope, preserving its restrictions, approval routing, events, and cancellation processing.
+- `registerHostTool()` adds a process-local tool visible only to module runs. A registration may also provide a trusted factory that projects that exact capability into one managed child's own tool scope; the scoped proxy disappears when the child is disposed and never enters the parent or global model catalog. Private Host tools take precedence over ordinary tools with the same name.
+- Agent-originated modules may use the narrow `context.agent.run()` capability. It always starts one fresh in-process child through `ctx.subagents`, inherits the initiating Agent's resolved model route, and, when `agentStepModelRoutes` is configured, applies automatic routing only inside that managed child. It enforces caller-declared step and per-request output-token limits, requires structured completion, and awaits disposal before returning. Modules marked `requiresAgent` are rejected by browser controls.
 - Input is checked before admission. Output must satisfy the module schema before a result can be `succeeded` and `validated`.
 - A module definition must use a positive integer `maxConcurrent`, a non-negative integer `queueLimit`, and a finite positive `timeoutMs`; invalid policies are rejected during registration.
 
@@ -67,11 +68,11 @@ pnpm exec tsx scripts/run-oxlint.ts packages/experimental/module-scheduler
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through consumers that select a module and render its structured result.
+The model receives one `module_run` tool. It selects a registered versioned module, supplies schema-checked input, and receives the scheduler's structured terminal result. A managed module receives only a narrow one-shot Agent runner rather than an LLM client, provider selector, child handle, or tool registry.
 
 #### KV Cache effect
 
-The service adds no prompt or tool schema, so it does not change the stable model request prefix.
+The stable model request prefix includes the fixed `module_run` schema. Registered module definitions remain outside that schema, so catalog growth does not expand the prefix.
 
 ## Known Limitations and Deferred Work
 
@@ -79,6 +80,7 @@ The service adds no prompt or tool schema, so it does not change the stable mode
 
 - **Private opt-in only** — no shipped profile loads this package.
 - **Process-local scheduling only** — queued and active runs are not persisted or restored after restart.
+- **Per-request token ceiling only** — managed children bound model steps and each request's maximum output tokens; the scheduler does not claim a hard cumulative token budget.
 
 <a id="dev-note"></a>
 ### Dev Note

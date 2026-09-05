@@ -52,5 +52,6 @@ describe('module scheduler Loader composition', () => {
 
     expect(ctx.moduleScheduler).toBeInstanceOf(ModuleSchedulerService)
     expect(ctx.moduleScheduler.registry).toBeInstanceOf(ModuleRegistry)
+    expect(ctx.tools.schemas().some(tool => tool.name === 'module_run')).toBe(true)
   })
 })

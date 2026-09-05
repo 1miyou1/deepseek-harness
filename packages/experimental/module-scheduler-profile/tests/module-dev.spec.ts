@@ -123,26 +123,29 @@ describe('module developer host tools', () => {
 
 describe('module developer definition', () => {
   it('registers the fixed tool allowlist and releases it', () => {
-    let definition: ModuleDefinition | undefined
+    const definitions: ModuleDefinition[] = []
     let cleanup: (() => void) | undefined
     const unregister = vi.fn()
     applyModule({
-      moduleScheduler: { registry: { register: (value: ModuleDefinition) => { definition = value; return 'module-developer@1.0.0' }, unregister } },
+      moduleScheduler: { registry: { register: (value: ModuleDefinition) => { definitions.push(value); return `${value.id}@${value.version}` }, unregister } },
       effect: (setup: () => () => void) => { cleanup = setup() },
     } as unknown as Context)
-    expect(definition).toMatchObject({
-      id: 'module-developer',
-      displayName: '模块开发助手',
-      tools: ['module-dev/read', 'module-dev/write', 'module-dev/test', 'module-dev/lint', 'module-dev/typecheck'],
-    })
+    expect(definitions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'module-developer', version: '1.0.0', displayName: '模块开发助手' }),
+      expect.objectContaining({ id: 'module-developer', version: '2.0.0', displayName: '受管模块开发助手', requiresAgent: true }),
+    ]))
+    expect(definitions.every(value => JSON.stringify(value.tools) === JSON.stringify([
+      'module-dev/read', 'module-dev/write', 'module-dev/test', 'module-dev/lint', 'module-dev/typecheck',
+    ]))).toBe(true)
     cleanup!()
     expect(unregister).toHaveBeenCalledWith('module-developer@1.0.0')
+    expect(unregister).toHaveBeenCalledWith('module-developer@2.0.0')
   })
 
   it('reports a failed validation instead of claiming success', async () => {
-    let definition: ModuleDefinition | undefined
+    const definitions: ModuleDefinition[] = []
     applyModule({
-      moduleScheduler: { registry: { register: (value: ModuleDefinition) => { definition = value; return 'module-developer@1.0.0' }, unregister: vi.fn() } },
+      moduleScheduler: { registry: { register: (value: ModuleDefinition) => { definitions.push(value); return `${value.id}@${value.version}` }, unregister: vi.fn() } },
       effect: () => undefined,
     } as unknown as Context)
     const tools = new Map([
@@ -152,7 +155,7 @@ describe('module developer definition', () => {
       ['module-dev/lint', vi.fn().mockResolvedValue({ ok: true })],
       ['module-dev/typecheck', vi.fn().mockResolvedValue({ ok: true })],
     ])
-    const output = await definition!.execute({
+    const output = await definitions.find(value => value.version === '1.0.0')!.execute({
       sessionId: 's', taskId: 't', runId: 'r', signal: new AbortController().signal,
       input: { id: 'example', file: 'src/module.ts', content: 'after' }, tools,
     })

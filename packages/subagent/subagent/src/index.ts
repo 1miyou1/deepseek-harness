@@ -557,6 +557,9 @@ export class SubagentRuntime extends TypertRemoteService {
     this.assertCapabilities(provider, request)
     assertSubagentMaxDepth(request.maxDepth)
     if (request.outputSchema !== undefined) assertObjectJsonSchema(request.outputSchema)
+    if (request.maxSteps !== undefined && (!Number.isSafeInteger(request.maxSteps) || request.maxSteps < 1)) {
+      throw new RangeError('subagent maxSteps must be a positive safe integer')
+    }
     const descriptor = snapshotSubagentDescriptor({
       mode: 'one-shot',
       provider: name,
@@ -626,6 +629,9 @@ export class SubagentRuntime extends TypertRemoteService {
       { when: request.maxDepth !== undefined, cap: 'depthLimit' },
       { when: request.toolFilter !== undefined, cap: 'toolFilter' },
       { when: request.persona !== undefined, cap: 'persona' },
+      { when: request.scopedTools !== undefined, cap: 'scopedTools' },
+      { when: request.scopedSetup !== undefined, cap: 'scopedSetup' },
+      { when: request.maxSteps !== undefined, cap: 'stepLimit' },
     ]
     for (const { when, cap } of needs) {
       if (when && !provider.capabilities[cap]) {
