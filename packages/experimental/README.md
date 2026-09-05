@@ -24,6 +24,7 @@ The experimental group contains prototype capabilities that are not part of any 
 
 | Package | Role | ctx key |
 |---|---|---|
+| [`agent-step-model-router`](agent-step-model-router/README.md) | Deterministic Luna, Terra, and Sol routing before Agent prompt assembly | — |
 | [`agent-team-profile`](agent-team-profile/README.md) | Explicit source-checkout profile layer for Agent Teams | — |
 | [`agent-team`](agent-team/README.md) | Named teammates with durable messages and a shared task board | `ctx.agentTeams` |
 | [`agent-team-web-profile`](agent-team-web-profile/README.md) | Explicit source-checkout Web layer for Agent Teams | — |

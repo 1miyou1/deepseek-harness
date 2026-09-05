@@ -6,7 +6,7 @@ import * as yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
 
 describe('Module Scheduler host profile bundle', () => {
-  it('declares one private parseable scheduler layer', () => {
+  it('declares the scheduler layer without auto-loading the module developer', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
       private?: boolean
@@ -35,12 +35,6 @@ describe('Module Scheduler host profile bundle', () => {
     }, {
       id: 'android-environment-diagnostics',
       name: '@deepseek-ai/dsh-experimental-android-environment-diagnostics-profile/android-diagnostics',
-    }, {
-      id: 'module-developer-tools',
-      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/module-dev-tools',
-    }, {
-      id: 'module-developer',
-      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/module-developer',
     }])
   })
 })

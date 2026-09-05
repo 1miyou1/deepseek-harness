@@ -16,12 +16,30 @@ export interface ModelSelection {
   reasoningEffort?: ReasoningEffortId
 }
 
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap {
+    /** Complete validated model selection requested for subsequent prompt assembly. */
+    'model/selection': ModelSelection
+  }
+}
+
 /** Mutable model selection plus the value captured for the current step. */
 export interface ModelSelectionRef {
   /** Model selected for the next step that enters prompt assembly. */
   current: ModelSelection | undefined
   /** Selection captured when the current step entered prompt assembly. */
   assembled: ModelSelection | undefined
+}
+
+const selections = new WeakMap<Context, ModelSelectionRef>()
+
+/**
+ * Read the model-selection reference installed on one Agent scope.
+ * @param agentCtx - Agent-scoped context.
+ * @returns the installed mutable selection, or undefined when the entry point installed none.
+ */
+export function modelSelectionFor(agentCtx: Context): ModelSelectionRef | undefined {
+  return selections.get(agentCtx)
 }
 
 /**
@@ -37,6 +55,8 @@ export interface ModelSelectionRef {
  * @returns Disposer for both scoped waterfall listeners.
  */
 export function installModelSelection(agentCtx: Context, selection: ModelSelectionRef): () => void {
+  if (selections.has(agentCtx)) throw new Error('model selection is already installed for this Agent scope')
+  selections.set(agentCtx, selection)
   const disposeAssembly = agentCtx.on('system-prompt/assemble', async (_assembly, _context, next) => {
     const selected = selection.current
     const assembled = await next()
@@ -69,6 +89,7 @@ export function installModelSelection(agentCtx: Context, selection: ModelSelecti
     },
   )
   return () => {
+    if (selections.get(agentCtx) === selection) selections.delete(agentCtx)
     disposeAssembly()
     disposeRequest()
   }

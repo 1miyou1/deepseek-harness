@@ -4,6 +4,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import {
   agentEvents,
   installModelSelection,
+  modelSelectionFor,
   type Agent,
   type ModelSelectionRef,
 } from '../src/index.ts'
@@ -15,6 +16,7 @@ describe('installModelSelection()', () => {
     await ctx.plugin(SystemPrompt)
     const selection: ModelSelectionRef = { current: undefined, assembled: undefined }
     const dispose = installModelSelection(ctx, selection)
+    expect(modelSelectionFor(ctx)).toBe(selection)
     const agent = {} as Agent
     const seed: LlmCallConfig = { provider: 'seed', model: 'seed', temperature: 0.2 }
     const signal = new AbortController().signal
@@ -52,6 +54,7 @@ describe('installModelSelection()', () => {
     )).resolves.toEqual({ provider: 'beta', model: 'b1', temperature: 0.2 })
 
     dispose()
+    expect(modelSelectionFor(ctx)).toBeUndefined()
     expect((await ctx.systemPrompt.assemble()).variables).toEqual({})
     await expect(agentEvents(ctx, agent).waterfall(
       'agent/request', { turn: 2, step: 0, signal }, () => Promise.resolve(seed),

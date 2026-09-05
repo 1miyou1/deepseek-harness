@@ -32,16 +32,6 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   }
 }
 
-declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
-    /**
-     * Complete validated model selection requested for subsequent prompt
-     * assembly. Log-only: it never enters derived model history.
-     */
-    'model/selection': ModelSelection
-  }
-}
-
 /** Persisted hints used to summarize a cold Session. */
 export interface SessionListMetadata {
   /** Whether the folded prefix contains no turn. */

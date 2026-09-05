@@ -285,7 +285,7 @@ export class ModuleRegistry {
   /** List browser-facing module projections.
    * @returns Registered module projections sorted by reference.
    */
-  list(): ModuleView[] {
+  list(runnableFromBrowser: (tools: readonly string[]) => boolean = tools => tools.length === 0): ModuleView[] {
     return [...this.items.values()].map(({ id, version, displayName, description, tools, inputSchema }) => ({
       ref: `${id}@${version}`,
       id,
@@ -294,7 +294,7 @@ export class ModuleRegistry {
       description,
       tools,
       inputSchema,
-      runnableFromBrowser: tools.length === 0,
+      runnableFromBrowser: runnableFromBrowser(tools),
     })).sort((left, right) => left.ref.localeCompare(right.ref))
   }
 }
@@ -559,13 +559,13 @@ export class ModuleSchedulerService extends TypertRemoteService {
   @Remote('view')
   remoteView(sessionId: string): ModuleSchedulerView {
     return {
-      modules: this.registry.list(),
+      modules: this.registry.list(tools => tools.every(tool => this.privateHostTools.has(tool))),
       runs: structuredClone(this.recentRuns.get(sessionId) ?? []),
     }
   }
 
   /**
-   * Starts one tool-free module from the browser control surface.
+   * Starts one module whose tools are fully provided by the private Host registry.
    * @param sessionId - Browser session that owns the projected run.
    * @param request - Task, module reference, and schema-checked input.
    * @returns The created run view or an explicit business failure.
@@ -578,7 +578,7 @@ export class ModuleSchedulerService extends TypertRemoteService {
     } catch (error: unknown) {
       return failure(errorMessage(error))
     }
-    if (definition.tools.length > 0) return failure('module-requires-agent')
+    if (!definition.tools.every(tool => this.privateHostTools.has(tool))) return failure('module-requires-agent')
     if (validateSchema(definition.inputSchema, request.input ?? {}).length > 0) return failure('input-schema-invalid')
 
     const handle = this.run({ ...request, sessionId })

@@ -23,7 +23,17 @@ Private host profile layer for the experimental module scheduler service, its `n
 <a id="usage"></a>
 ## Usage
 
-Add this bundle to a source-checkout profile to load the scheduler and register `network-research@1.0.0` plus `module-developer@1.0.0`. The development assistant reads and compare-and-replaces one existing file inside `packages/experimental/<id>-profile`, then runs fixed `test`, `lint`, and no-emit `typecheck` actions. The Host rejects invalid module ids, parent or absolute paths, symbolic-link escapes, sensitive filenames, missing files, and content changed since the read. Validation runs through the managed subprocess service with a credential-scrubbed environment, bounded output, run cancellation, and a read-only Host sandbox rooted at the target profile.
+Add this bundle to a source-checkout profile to load the scheduler and register `network-research@1.0.0`. The module developer is exported but deliberately absent from the default patch. Opt in by adding both entries to a later profile patch:
+
+```yaml
+- insert:
+    - id: module-developer-tools
+      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/module-dev-tools'
+    - id: module-developer
+      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/module-developer'
+```
+
+The development assistant reads and compare-and-replaces one existing file inside `packages/experimental/<id>-profile`, then runs fixed `test`, `lint`, and no-emit `typecheck` actions. The Host rejects invalid module ids, parent or absolute paths, symbolic-link escapes, sensitive filenames, missing files, and content changed since the read. Validation runs through the managed subprocess service with a credential-scrubbed environment, bounded output, run cancellation, and a read-only Host sandbox rooted at the target profile.
 
 <a id="model-experience"></a>
 ## Model Experience
@@ -32,7 +42,7 @@ Add this bundle to a source-checkout profile to load the scheduler and register 
 
 #### What the model sees
 
-This bundle changes profile composition and registers a host-side `ctx.web` workload plus five private development tools. Only `module-developer@1.0.0`, which declares the exact names, can call these tools; they are not added to the ordinary model tool catalog, and the bundle adds no model prompt.
+The default bundle changes profile composition and registers a host-side `ctx.web` workload without loading the development assistant. After explicit opt-in, only `module-developer@1.0.0` can call its five private tools; they are not added to the ordinary model tool catalog, and the bundle adds no model prompt.
 
 #### Token effect
 
@@ -46,7 +56,7 @@ The private tools do not change the stable model request prefix.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Private opt-in only** — official shipped profiles do not load this bundle.
+- **Two explicit opt-ins** — official shipped profiles do not load this bundle, and the bundle's default patch does not load the development assistant.
 - **No persistence** — the layer does not persist process or browser state.
 - **Single-file replacement** — the first assistant pass compare-and-replaces one existing module file and runs fixed validation; it does not create files, emit typecheck build artifacts, build a complete module, or iterate autonomously.
 

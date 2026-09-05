@@ -52,6 +52,12 @@ export interface CancelOptions {
  */
 export type AgentStatus = 'idle' | 'running'
 
+/** Claimed messages supplied to prompt assembly and pre-step admission. */
+export interface RouteStepDecision {
+  /** Messages routed for this step. */
+  messages: UserMessage[]
+}
+
 /** Whether and with which messages the loop enters a proposed step. */
 export type PreStepDecision =
   | { kind: 'reject' }
@@ -224,6 +230,18 @@ declare module '@deepseek-ai/cordis' {
     'agent/session-start'(this: Scoped<Agent>, payload: { agent: Agent; source: SessionStartSource }): void
 
     // ---- the machine's extension points ----
+    /**
+     * Route claimed messages before prompt assembly and pre-step admission.
+     * Calling `next()` preserves the current messages.
+     * @param payload.agent - the agent proposing the step.
+     * @param payload.messages - messages removed from the inbox for this step.
+     * @param payload.turn - the turn that will own the step.
+     * @param payload.step - the step proposed by the loop.
+     * @param payload.signal - the current turn's cancellation signal.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+     * @mode waterfall
+     */
+    'agent/route-step'(this: Scoped<Agent>, payload: { agent: Agent; messages: UserMessage[]; turn: number; step: number; signal: AbortSignal }, next: () => Promise<RouteStepDecision>): Promise<RouteStepDecision>
     /**
      * Reject a proposed step or replace the messages that enter it. Calling
      * `next()` preserves the current messages.

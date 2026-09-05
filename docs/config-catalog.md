@@ -515,6 +515,27 @@ export interface Config {
 
 Source: [`packages/e2b/e2b/src/index.ts:43`](../packages/e2b/e2b/src/index.ts)
 
+<a id="deepseek-aidsh-experimental-agent-step-model-router"></a>
+
+## `@deepseek-ai/dsh-experimental-agent-step-model-router`
+
+Requires: `sessionProjections`
+
+```ts config-catalog
+/** Exact deployment route for each task tier. */
+export type Config = TierRoutes
+
+/** Exact deployment routes for each tier. */
+export type TierRoutes = Readonly<Record<ModelTier, ModelSelection>>
+
+/** Model tier owned by the step router. */
+export type ModelTier = 'luna' | 'terra' | 'sol'
+```
+
+Depends on: [`ModelSelection`](subsystems/core.md)
+
+Source: [`packages/experimental/agent-step-model-router/src/index.ts:15`](../packages/experimental/agent-step-model-router/src/index.ts)
+
 <a id="deepseek-aidsh-experimental-agent-team"></a>
 
 ## `@deepseek-ai/dsh-experimental-agent-team`
@@ -698,7 +719,7 @@ export interface ModulePolicy {
 }
 ```
 
-Source: [`packages/experimental/module-scheduler/src/index.ts:144`](../packages/experimental/module-scheduler/src/index.ts)
+Source: [`packages/experimental/module-scheduler/src/index.ts:163`](../packages/experimental/module-scheduler/src/index.ts)
 
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 

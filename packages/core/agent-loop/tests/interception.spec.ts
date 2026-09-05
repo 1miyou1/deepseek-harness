@@ -60,6 +60,35 @@ function events(agent: Agent): readonly SessionEvent[] {
   return agent.session.snapshotEvents()
 }
 
+describe('agent/route-step', () => {
+  it('routes claimed input before prompt assembly and pre-step admission', async () => {
+    const adapter = new MockAdapter([textResponse('ok')])
+    const ctx = await harness(adapter)
+    const agent = await ctx.agentLoop.create(SessionId('route-before-assembly'), { provider: 'mock', model: 'mock' })
+    const order: string[] = []
+
+    ctx.on('agent/route-step', async ({ agent: subject, messages }, next) => {
+      if (subject === agent) {
+        order.push(`route:${messages[0]?.content[0]?.type === 'text' ? messages[0].content[0].text : ''}`)
+      }
+      return next()
+    })
+    agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+      order.push('assemble')
+      return next()
+    })
+    ctx.on('agent/pre-step', async (_payload, next) => {
+      order.push('pre-step')
+      return next()
+    })
+
+    send(agent, 'classify me')
+    await agent.whenIdle()
+
+    expect(order).toEqual(['route:classify me', 'assemble', 'pre-step'])
+  })
+})
+
 describe('agent/pre-step', () => {
   it('enter (default via next) records the user/message unchanged', async () => {
     const adapter = new MockAdapter([textResponse('ok')])

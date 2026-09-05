@@ -52,18 +52,22 @@ describe('module scheduler browser control contract', () => {
     expect(ctx.moduleScheduler.remoteView('session-b').runs).toEqual([])
   })
 
-  it('rejects tool modules from the browser control surface', async () => {
+  it('runs modules backed only by private Host tools and rejects unavailable tools', async () => {
     const ctx = await setup()
-    let executed = false
-    ctx.moduleScheduler.registry.register(moduleDefinition('writer', async () => {
-      executed = true
-      return { value: 'unused' }
-    }, ['write']))
+    ctx.moduleScheduler.registerHostTool('private-write', async args => args)
+    ctx.moduleScheduler.registry.register(moduleDefinition('private-writer', async ({ input, tools }) => tools.get('private-write')!(input), ['private-write']))
+    ctx.moduleScheduler.registry.register(moduleDefinition('writer', async () => ({ value: 'unused' }), ['write']))
 
+    expect(ctx.moduleScheduler.remoteView('session-a').modules).toMatchObject([
+      { ref: 'private-writer@1.0.0', runnableFromBrowser: true },
+      { ref: 'writer@1.0.0', runnableFromBrowser: false },
+    ])
     expect(ctx.moduleScheduler.remoteStart('session-a', {
-      taskId: 'task-a', moduleRef: 'writer@1.0.0', input: { value: 'x' },
+      taskId: 'task-a', moduleRef: 'private-writer@1.0.0', input: { value: 'x' },
+    })).toMatchObject({ ok: true })
+    expect(ctx.moduleScheduler.remoteStart('session-a', {
+      taskId: 'task-b', moduleRef: 'writer@1.0.0', input: { value: 'x' },
     })).toEqual({ ok: false, error: { code: 'module-requires-agent', message: 'module-requires-agent' } })
-    expect(executed).toBe(false)
   })
 
   it('cancels only runs owned by the requested session', async () => {
