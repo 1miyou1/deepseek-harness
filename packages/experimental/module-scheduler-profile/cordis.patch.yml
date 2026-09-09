@@ -9,10 +9,8 @@
         timeoutMs: 30000
         maxRecentRuns: 50
         agentStepModelRoutes:
-          luna: { provider: openai-codex, model: gpt-5.6-luna }
-          terra: { provider: openai-codex, model: gpt-5.6-terra }
+          luna: { provider: xindu-glm, model: glm-5.3-flash }
+          terra: { provider: xindu-glm, model: glm-5.3-flash }
           sol: { provider: openai-codex, model: gpt-5.6-sol }
     - id: module-network-research
       name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/network-research'
-    - id: android-environment-diagnostics
-      name: '@deepseek-ai/dsh-experimental-android-environment-diagnostics-profile/android-diagnostics'
