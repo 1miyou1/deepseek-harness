@@ -72,7 +72,7 @@ async function createValidationCopy(root: string, module: string): Promise<{ roo
     const baseConfig = resolve(root, 'tsconfig.base.json')
     if (await lstat(baseConfig).then(() => true).catch(() => false)) await cp(baseConfig, resolve(tempRoot, 'tsconfig.base.json'))
     await writeFile(resolve(tempRoot, 'tsconfig.json'), '{"compilerOptions":{"module":"NodeNext","moduleResolution":"NodeNext","target":"ES2022","skipLibCheck":true,"types":["node"]}}\n')
-    await writeFile(resolve(tempRoot, 'vitest.validator.config.mjs'), "export default { test: { pool: 'threads', maxWorkers: 1 } }\n")
+    await writeFile(resolve(copiedModule, 'vitest.validator.config.mjs'), "export default { test: { pool: 'threads', maxWorkers: 1 } }\n")
     return { root: tempRoot, module: copiedModule }
   } catch (error) {
     await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined)
@@ -194,7 +194,7 @@ export async function validateModule(
     try {
       for (const name of ['test', 'lint', 'typecheck'] as const) {
         if (controller.signal.aborted) return complete({ ...failure(signal.aborted ? 'validation-cancelled' : 'validation-timeout', signal.aborted ? '整体校验已取消' : '整体校验超时', name), results }, resolved)
-        const result = await runStep(root, validationCopy.root, name, controller.signal, runtime, resolved)
+        const result = await runStep(root, validationCopy.module, name, controller.signal, runtime, resolved)
         results.push(result)
         if (result.ok !== true) return complete({ ...failure((result.error as { code?: string } | undefined)?.code ?? 'validation-command-failed', `${name} 执行失败`, name, { exitCode: result.exitCode }), results }, resolved)
       }
