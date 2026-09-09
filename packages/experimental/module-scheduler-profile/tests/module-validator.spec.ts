@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -18,6 +18,8 @@ function workspace(): string {
   roots.push(root)
   mkdirSync(join(root, 'packages/experimental/example-profile/src'), { recursive: true })
   writeFileSync(join(root, 'packages/experimental/example-profile/src/module.ts'), 'original\n')
+  mkdirSync(join(root, 'packages/experimental/example-profile/node_modules'), { recursive: true })
+  symlinkSync(join(root, 'packages/experimental/example-profile/src'), join(root, 'packages/experimental/example-profile/node_modules/self'), 'junction')
   writeFileSync(join(root, 'tsconfig.base.json'), '{"compilerOptions":{"module":"NodeNext","moduleResolution":"NodeNext","target":"ES2022","skipLibCheck":true}}\n')
   return root
 }

@@ -1,7 +1,7 @@
 /** Fixed, read-only subprocess validation for one experimental module. */
 
 import { cp, lstat, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { HostTool, ModuleDefinition } from '@deepseek-ai/dsh-experimental-module-scheduler'
@@ -66,7 +66,7 @@ async function createValidationCopy(root: string, module: string): Promise<{ roo
     const relativeModule = relative(root, module)
     const copiedModule = resolve(tempRoot, relativeModule)
     await mkdir(resolve(copiedModule, '..'), { recursive: true })
-    await cp(module, copiedModule, { recursive: true, dereference: false })
+    await cp(module, copiedModule, { recursive: true, dereference: false, filter: source => !relative(root, source).split(sep).includes('node_modules') })
     const baseConfig = resolve(root, 'tsconfig.base.json')
     if (await lstat(baseConfig).then(() => true).catch(() => false)) await cp(baseConfig, resolve(tempRoot, 'tsconfig.base.json'))
     await writeFile(resolve(tempRoot, 'tsconfig.json'), '{"compilerOptions":{"module":"NodeNext","moduleResolution":"NodeNext","target":"ES2022","skipLibCheck":true,"types":["node"]}}\n')
@@ -187,7 +187,8 @@ export async function validateModule(
   } catch (cause) {
     const code = cause instanceof Error ? cause.message : 'validation-module-not-found'
     const message = code === 'validation-path-outside-module' ? '路径越出模块目录' : code === 'validation-config-invalid' ? '校验配置无效' : code === 'validation-copy-failed' ? '无法创建校验副本' : '模块不存在'
-    return failure(code, message) as JsonValue
+    const detail = cause instanceof Error && cause.cause instanceof Error ? cause.cause.message : undefined
+    return failure(code, message, undefined, detail === undefined ? undefined : { cause: detail }) as JsonValue
   } finally {
     clearTimeout(totalTimer)
     signal.removeEventListener('abort', externalAbort)
