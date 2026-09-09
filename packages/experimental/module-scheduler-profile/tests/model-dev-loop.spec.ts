@@ -73,17 +73,17 @@ class ManagedDeveloperAdapter extends LlmAdapter {
         moduleRef: 'module-developer@2.0.0', input: { id: 'example', task: '把 src/module.ts 更新为 after' },
       })
       : this.turn === 2
-        ? toolResponse('read-file', 'module-dev/read', { id: 'example', file: 'src/module.ts' })
+        ? toolResponse('read-file', 'module_dev_read', { id: 'example', file: 'src/module.ts' })
         : this.turn === 3
-          ? toolResponse('write-file', 'module-dev/write', { id: 'example', file: 'src/module.ts', expectedContent: 'before\n', content: 'after\n' })
+          ? toolResponse('write-file', 'module_dev_write', { id: 'example', file: 'src/module.ts', expectedContent: 'before\n', content: 'after\n' })
           : this.turn === 4
-            ? toolResponse('test-module', 'module-dev/test', { id: 'example' })
+            ? toolResponse('test-module', 'module_dev_test', { id: 'example' })
             : this.turn === 5
-              ? toolResponse('retry-test-module', 'module-dev/test', { id: 'example' })
+              ? toolResponse('retry-test-module', 'module_dev_test', { id: 'example' })
               : this.turn === 6
-                ? toolResponse('lint-module', 'module-dev/lint', { id: 'example' })
+                ? toolResponse('lint-module', 'module_dev_lint', { id: 'example' })
                 : this.turn === 7
-                  ? toolResponse('typecheck-module', 'module-dev/typecheck', { id: 'example' })
+                  ? toolResponse('typecheck-module', 'module_dev_typecheck', { id: 'example' })
                   : this.turn === 8
                     ? toolResponse('complete-module', 'structured_output', {
                       ok: true,
@@ -162,9 +162,9 @@ describe('module developer model loop composition', () => {
     expect(childRequests.every(request => request.provider === 'mock' && request.model === 'mock')).toBe(true)
     expect(childRequests.every(request => request.maxTokens === 4096)).toBe(true)
     expect(childRequests[0]?.tools?.map(tool => tool.name).sort()).toEqual([
-      'module-dev/lint', 'module-dev/read', 'module-dev/test', 'module-dev/typecheck', 'module-dev/write', 'structured_output',
+      'module_dev_lint', 'module_dev_read', 'module_dev_test', 'module_dev_typecheck', 'module_dev_write', 'structured_output',
     ])
-    expect(adapter.requests[0]?.tools?.map(tool => tool.name)).not.toContain('module-dev/read')
+    expect(adapter.requests[0]?.tools?.map(tool => tool.name)).not.toContain('module_dev_read')
     expect(adapter.requests[1]?.tools?.map(tool => tool.name)).not.toContain('module_run')
     const result = adapter.requests.at(-1)?.messages.flatMap(message => message.content).find(block => block.type === 'tool-result')
     if (result?.type !== 'tool-result' || result.content[0]?.type !== 'text') throw new Error('missing-managed-developer-result')

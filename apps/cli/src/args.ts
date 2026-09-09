@@ -45,7 +45,7 @@ interface PluginInvocation {
 }
 
 /** The resolved `dsh` invocation. Help, version, and errors exit inside {@link parseDshArgs}. */
-export type DshInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation
+export type DshInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation | ModuleTestInvocation
 
 /** Launcher flags shared by the default command and the `web` alias. */
 interface BootOptions {
@@ -59,6 +59,24 @@ interface BootOptions {
  * variadic — a variadic `--patch` would swallow the inner arguments.
  */
 const collect = (value: string, previous: string[] = []): string[] => [...previous, value]
+
+interface ModuleTestInvocation {
+  mode: 'module-test'
+  profile: string
+  patches: string[]
+  args: string[]
+}
+
+/**
+ * Resolve a module acceptance invocation. It always uses the isolated web
+ * profile unless an explicit profile is supplied for a temporary test home.
+ */
+function resolveModuleTest(program: Command, profile: string | undefined, options: BootOptions, args: string[]): DshInvocation {
+  if (profile === '') program.error('error: --profile needs a name')
+  if (profile !== undefined && profile !== 'web') program.error('error: module-test only supports the isolated web profile')
+  if (args.length === 0) program.error('error: module-test needs a command')
+  return { mode: 'module-test', profile: profile ?? 'web', patches: options.patch ?? [], args }
+}
 
 /** The launcher's own help text; each app prints its own. */
 const HELP_EXAMPLES = `
@@ -166,6 +184,18 @@ export function parseDshArgs(argv: readonly string[], version: string): DshInvoc
     .action((args: string[], options: BootOptions) => {
       rejectParentOptions('web')
       resolved = resolveBoot(web, 'web', options, args)
+    })
+
+  const moduleTest = program.command('module-test').description('run the isolated module acceptance CLI against a temporary profile')
+  moduleTest
+    .option('--profile <name>', 'temporary profile name', 'web')
+    .option('--patch <path>', 'temporary acceptance patch', collect)
+    .allowUnknownOption()
+    .passThroughOptions()
+    .argument('[args...]', 'module-test command and arguments')
+    .action((args: string[], options: { profile: string } & BootOptions) => {
+      rejectParentOptions('module-test')
+      resolved = resolveModuleTest(program, options.profile, options, args)
     })
 
   const plugin = program.command('plugin').description('manage a profile\'s plugins by forwarding the remaining arguments to pnpm in the profile directory')

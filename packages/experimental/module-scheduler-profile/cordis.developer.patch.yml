@@ -1,0 +1,6 @@
+# Optional Luna/Terra module builder; module-developer@3.0.0 rejects Sol.
+- insert:
+    - id: module-developer-tools
+      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/module-dev-tools'
+    - id: module-developer
+      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/module-developer'

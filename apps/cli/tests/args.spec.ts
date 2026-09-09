@@ -45,6 +45,13 @@ describe('parseDshArgs', () => {
       .toEqual({ mode: 'profile', profile: 'tui', patches: ['a.yml'], args: ['--resume', 'b', '--patch', 'late.yml'] })
   })
 
+  it('routes the isolated module acceptance command', () => {
+    expect(parse(['module-test', '--patch', 'acceptance.yml', 'list', '--session', 'acceptance']))
+      .toEqual({ mode: 'module-test', profile: 'web', patches: ['acceptance.yml'], args: ['list', '--session', 'acceptance'] })
+    expect(parse(['module-test', 'start', 'reader@1.0.0', '--session', 's', '--task', 't', '--input', '{}']))
+      .toEqual({ mode: 'module-test', profile: 'web', patches: [], args: ['start', 'reader@1.0.0', '--session', 's', '--task', 't', '--input', '{}'] })
+  })
+
   it('routes the plugin pnpm forwarder', () => {
     expect(parse(['plugin', '--profile', 'tui', 'add', 'turtle-ui']))
       .toEqual({ mode: 'plugin', profile: 'tui', args: ['add', 'turtle-ui'] })
@@ -95,6 +102,8 @@ describe('parseDshArgs', () => {
     expect(exitCode(['plugin', 'add', 'x'])).toBe(1) // --profile required
     expect(exitCode(['plugin', '--profile', 'tui'])).toBe(1) // nothing to forward
     expect(exitCode(['plugin', '--profile', ''])).toBe(1)
+    expect(exitCode(['module-test', '--profile', ''])).toBe(1)
+    expect(exitCode(['module-test'])).toBe(1)
     expect(exitCode(['--profile', 'x', 'plugin', 'add', 'y'])).toBe(1)
   })
 

@@ -37,7 +37,7 @@ kind: "package-reference"
 - 全局并发、模块级并发和两级队列上限分别执行；超额工作返回 `blocked`。
 - 模块代码只能获得声明的工具。模型发起的运行在发起 Agent 的作用域中解析并执行普通工具，从而保留其限制、审批路由、事件和取消处理。
 - `registerHostTool()` 添加仅模块运行可见的进程内工具。注册项还可以提供可信工厂，把这一项能力投影为单个受管子 Agent 自有作用域中的工具；子 Agent 释放时代理随之消失，且永不进入父 Agent 或全局模型工具目录。私有 Host 工具优先于同名普通工具。
-- 由 Agent 发起的模块可以使用窄接口 `context.agent.run()`。它固定通过 `ctx.subagents` 启动一个全新进程内子 Agent，继承发起 Agent 已解析的模型路由；配置 `agentStepModelRoutes` 时，自动路由只在该受管子 Agent 内生效。它执行调用方声明的步骤上限和单请求输出 token 上限，要求结构化完成，并在返回前等待释放完成。标记 `requiresAgent` 的模块会被浏览器控制拒绝。
+- 由 Agent 发起的模块可以使用窄接口 `context.agent.run()`。它固定通过 `ctx.subagents` 启动一个全新进程内子 Agent，通常继承发起 Agent 已解析的模型路由。配置 `agentStepModelRoutes` 时，自动路由只在该受管子 Agent 内生效；模块也可以为一次运行显式请求 `luna` 或 `terra` 路由，但接口不接受 `sol`。它执行调用方声明的步骤上限和单请求输出 token 上限，要求结构化完成，并在返回前等待释放完成。标记 `requiresAgent` 的模块会被浏览器控制拒绝。
 - 输入在准入前校验。输出必须满足模块 schema，结果才能成为 `succeeded` 且 `validated`。
 - 模块定义必须使用正整数 `maxConcurrent`、非负整数 `queueLimit` 和有限正数 `timeoutMs`；非法策略会在注册时拒绝。
 
@@ -68,7 +68,7 @@ pnpm exec tsx scripts/run-oxlint.ts packages/experimental/module-scheduler
 <a id="model-experience"></a>
 ## 模型体验
 
-模型会获得一个 `module_run` 工具，用它选择已注册的带版本模块、提交经 schema 校验的输入，并接收调度器的结构化终态结果。受管模块只能获得窄的一次性 Agent 运行器，不会获得 LLM 客户端、模型提供方选择器、子 Agent 句柄或工具注册表。
+模型通过 profile 挂载的 Tool Runtime adapter 间接使用此包；该 adapter 提供唯一的 `module_run` 工具，用于选择已注册的带版本模块、提交经 schema 校验的输入并接收调度器的结构化终态结果，而受管模块只能获得窄的一次性 Agent 运行器，不会获得 LLM 客户端、模型提供方选择器、子 Agent 句柄或工具注册表。
 
 #### KV 缓存影响
 

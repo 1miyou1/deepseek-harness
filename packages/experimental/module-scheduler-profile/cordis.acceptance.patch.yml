@@ -1,0 +1,14 @@
+- insert:
+    - id: module-scheduler
+      name: '@deepseek-ai/dsh-experimental-module-scheduler'
+      config:
+        maxConcurrent: 4
+        queueLimit: 32
+        timeoutMs: 120000
+        maxRecentRuns: 50
+        agentStepModelRoutes:
+          luna: { provider: xindu-gpt, model: gpt-5.6-luna }
+          terra: { provider: openai-codex, model: gpt-5.6-terra }
+          sol: { provider: openai-codex, model: gpt-5.6-sol }
+    - id: module-network-research
+      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/network-research'

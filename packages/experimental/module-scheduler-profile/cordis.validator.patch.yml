@@ -1,0 +1,4 @@
+# Optional read-only validator entry; never loads an Agent or model.
+- insert:
+    - id: module-validator
+      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/module-validator-tools'

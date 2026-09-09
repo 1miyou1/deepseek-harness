@@ -55,6 +55,30 @@ describe('module scheduler DSH tool gateway', () => {
     })
   })
 
+  it('passes the initiating Agent to private Host tools', async () => {
+    const ctx = await setup()
+    const caller = agent()
+    let seen: Agent | undefined
+    ctx.moduleScheduler.registerHostTool('private-agent', async (_args, context) => {
+      seen = context.agent
+      return { value: 'private' }
+    })
+    ctx.moduleScheduler.registry.register({
+      id: 'private-agent', version: '1.0.0', displayName: '私有 Agent', description: '转发发起 Agent', tools: ['private-agent'],
+      inputSchema: schema, outputSchema: schema,
+      resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 100 },
+      execute: async ({ tools }) => await tools.get('private-agent')?.({}),
+    })
+
+    await ctx.tools.execute({
+      callId: ToolCallId('call-private-agent'), name: 'module_run',
+      arguments: { moduleRef: 'private-agent@1.0.0', input: { value: 'hello' } },
+      agent: caller, signal: new AbortController().signal,
+    })
+
+    expect(seen).toBe(caller)
+  })
+
   it('runs module tools through the initiating Agent scope', async () => {
     const ctx = await setup()
     const caller = agent()

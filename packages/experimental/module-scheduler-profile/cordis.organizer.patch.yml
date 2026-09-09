@@ -1,0 +1,4 @@
+# Optional Luna-first document organizer; never selects Sol.
+- insert:
+    - id: document-organizer
+      name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/document-organizer'

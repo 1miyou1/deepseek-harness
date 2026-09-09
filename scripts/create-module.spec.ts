@@ -35,10 +35,30 @@ describe('create module scaffold', () => {
       private: true,
     })
     expect(readFileSync(join(target, 'src/module.ts'), 'utf8')).toContain("displayName: 'Android 设备调试'")
-    expect(readFileSync(join(target, 'src/module.ts'), 'utf8')).toContain("throw new Error('module-implementation-required')")
+    expect(readFileSync(join(target, 'src/module.ts'), 'utf8')).toContain("Promise.reject(new Error('module-implementation-required'))")
     expect(readFileSync(join(target, 'README.i18n.yaml'), 'utf8')).toMatch(/README\.md: [a-f0-9]{40}/u)
     expect(readFileSync(join(workspace, 'tsconfig.host.json'), 'utf8')).toContain(`{ "path": "./${relative}" }`)
     expect(existsSync(join(target, 'cordis.patch.yml'))).toBe(true)
+  })
+
+  it('escapes generated TypeScript literals and rejects control characters', () => {
+    const workspace = root()
+    const options = { id: 'quoted-module', name: "引号 '模块", description: '描述 第二行' }
+    const relative = createModuleScaffold(workspace, options)
+    const source = readFileSync(join(workspace, relative, 'src/module.ts'), 'utf8')
+    expect(source).toContain("displayName: '引号 \\'模块'")
+    expect(source).toContain("description: '描述 第二行'")
+    expect(() => createModuleScaffold(workspace, { ...options, id: 'control-module', description: '描述\u0001模块' })).toThrow('invalid-description')
+  })
+
+  it('cleans the partial scaffold when host reference setup fails', () => {
+    const workspace = root()
+    const options = { id: 'failed-module', name: '失败模块', description: '验证失败清理' }
+    writeFileSync(join(workspace, 'tsconfig.host.json'), '{"references":[] }\n')
+
+    expect(() => { createModuleScaffold(workspace, options) }).toThrow('anchor is missing')
+    expect(existsSync(join(workspace, 'packages/experimental/failed-module-profile'))).toBe(false)
+    expect(readFileSync(join(workspace, 'tsconfig.host.json'), 'utf8')).toBe('{"references":[] }\n')
   })
 
   it('removes the generated scaffold and its host reference', () => {

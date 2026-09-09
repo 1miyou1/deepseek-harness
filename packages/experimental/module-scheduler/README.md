@@ -37,7 +37,7 @@ Loading the default export registers one registry, one in-process coordinator, a
 - Global and per-module concurrency and queue limits are enforced independently; excess work is returned as `blocked`.
 - Module code receives only declared tools. A model-originated run resolves and executes ordinary tools in the initiating Agent's scope, preserving its restrictions, approval routing, events, and cancellation processing.
 - `registerHostTool()` adds a process-local tool visible only to module runs. A registration may also provide a trusted factory that projects that exact capability into one managed child's own tool scope; the scoped proxy disappears when the child is disposed and never enters the parent or global model catalog. Private Host tools take precedence over ordinary tools with the same name.
-- Agent-originated modules may use the narrow `context.agent.run()` capability. It always starts one fresh in-process child through `ctx.subagents`, inherits the initiating Agent's resolved model route, and, when `agentStepModelRoutes` is configured, applies automatic routing only inside that managed child. It enforces caller-declared step and per-request output-token limits, requires structured completion, and awaits disposal before returning. Modules marked `requiresAgent` are rejected by browser controls.
+- Agent-originated modules may use the narrow `context.agent.run()` capability. It always starts one fresh in-process child through `ctx.subagents` and normally inherits the initiating Agent's resolved model route. When `agentStepModelRoutes` is configured, automatic routing applies only inside that managed child; a module may instead request the exact `luna` or `terra` route for one run, but the interface does not accept `sol`. It enforces caller-declared step and per-request output-token limits, requires structured completion, and awaits disposal before returning. Modules marked `requiresAgent` are rejected by browser controls.
 - Input is checked before admission. Output must satisfy the module schema before a result can be `succeeded` and `validated`.
 - A module definition must use a positive integer `maxConcurrent`, a non-negative integer `queueLimit`, and a finite positive `timeoutMs`; invalid policies are rejected during registration.
 
@@ -68,7 +68,7 @@ pnpm exec tsx scripts/run-oxlint.ts packages/experimental/module-scheduler
 <a id="model-experience"></a>
 ## Model Experience
 
-The model receives one `module_run` tool. It selects a registered versioned module, supplies schema-checked input, and receives the scheduler's structured terminal result. A managed module receives only a narrow one-shot Agent runner rather than an LLM client, provider selector, child handle, or tool registry.
+Indirectly, through the profile-mounted Tool Runtime adapter, which exposes one `module_run` tool for selecting a registered versioned module, supplying schema-checked input, and receiving the scheduler's structured terminal result while a managed module receives only a narrow one-shot Agent runner rather than an LLM client, provider selector, child handle, or tool registry.
 
 #### KV Cache effect
 

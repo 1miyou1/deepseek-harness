@@ -1,7 +1,7 @@
 /** Create a buildable, deliberately non-runnable Module Scheduler profile scaffold. */
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, realpathSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -48,6 +48,17 @@ function requireRemoveId(args: string[]): string | undefined {
 function validate(options: CreateModuleOptions): void {
   if (!ID.test(options.id)) throw new Error('module id must be lowercase kebab-case')
   if (!HAN.test(options.name) || !HAN.test(options.description)) throw new Error('module name and description must contain Chinese text')
+  for (const [field, value] of Object.entries(options) as Array<[keyof CreateModuleOptions, string]>) {
+    if (value.length > 200 || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\r\n]/u.test(value)) throw new Error(`invalid-${field as string}`)
+  }
+}
+
+function literal(value: string): string {
+  // The repository enforces single quotes via @stylistic/quotes (avoidEscape),
+  // so generated TypeScript literals must render single-quoted. Validation
+  // already rejects control chars and CR/LF, leaving only backslash and single
+  // quote to escape.
+  return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
 }
 
 function blobHash(content: string): string {
@@ -85,11 +96,11 @@ function manifest(options: CreateModuleOptions, version: string): string {
 }
 
 function moduleSource(options: CreateModuleOptions): string {
-  return `import type { Context } from '@deepseek-ai/cordis'\nimport type { ModuleDefinition } from '@deepseek-ai/dsh-experimental-module-scheduler'\n\nexport const inject = ['moduleScheduler']\n\nexport function apply(ctx: Context): void {\n  const definition: ModuleDefinition = {\n    id: '${options.id}',\n    version: '1.0.0',\n    displayName: '${options.name}',\n    description: '${options.description}',\n    tools: [],\n    inputSchema: { type: 'object', additionalProperties: false, properties: {} },\n    outputSchema: { type: 'object', additionalProperties: false, properties: {} },\n    resourcePolicy: { maxConcurrent: 1, queueLimit: 4, timeoutMs: 30_000 },\n    execute: async () => { throw new Error('module-implementation-required') },\n  }\n  const ref = ctx.moduleScheduler.registry.register(definition)\n  ctx.effect(() => () => { ctx.moduleScheduler.registry.unregister(ref) }, '${options.id}: registration')\n}\n`
+  return `import type { Context } from '@deepseek-ai/cordis'\nimport type { ModuleDefinition } from '@deepseek-ai/dsh-experimental-module-scheduler'\n\nexport const inject = ['moduleScheduler']\n\nexport function apply(ctx: Context): void {\n  const definition: ModuleDefinition = {\n    id: ${literal(options.id)},\n    version: '1.0.0',\n    displayName: ${literal(options.name)},\n    description: ${literal(options.description)},\n    tools: [],\n    inputSchema: { type: 'object', additionalProperties: false, properties: {} },\n    outputSchema: { type: 'object', additionalProperties: false, properties: {} },\n    resourcePolicy: { maxConcurrent: 1, queueLimit: 4, timeoutMs: 30_000 },\n    execute: () => Promise.reject(new Error('module-implementation-required')),\n  }\n  const ref = ctx.moduleScheduler.registry.register(definition)\n  ctx.effect(() => () => { ctx.moduleScheduler.registry.unregister(ref) }, ${literal(`${options.id}: registration`)})\n}\n`
 }
 
 function profileTest(options: CreateModuleOptions): string {
-  return `import type { Context } from '@deepseek-ai/cordis'\nimport type { ModuleDefinition } from '@deepseek-ai/dsh-experimental-module-scheduler'\nimport { describe, expect, it, vi } from 'vitest'\nimport { apply } from '../src/module.ts'\n\ndescribe('${options.id} profile', () => {\n  it('registers a Chinese, non-runnable scaffold and releases it', async () => {\n    let definition: ModuleDefinition | undefined\n    let cleanup: (() => void) | undefined\n    const unregister = vi.fn()\n    apply({\n      moduleScheduler: { registry: { register: (value: ModuleDefinition) => { definition = value; return '${options.id}@1.0.0' }, unregister } },\n      effect: (setup: () => () => void) => { cleanup = setup() },\n    } as unknown as Context)\n    expect(definition).toMatchObject({ id: '${options.id}', version: '1.0.0', displayName: '${options.name}', description: '${options.description}', tools: [] })\n    await expect(definition!.execute({} as never)).rejects.toThrow('module-implementation-required')\n    cleanup!()\n    expect(unregister).toHaveBeenCalledWith('${options.id}@1.0.0')\n  })\n})\n`
+  return `import type { Context } from '@deepseek-ai/cordis'\nimport type { ModuleDefinition } from '@deepseek-ai/dsh-experimental-module-scheduler'\nimport { describe, expect, it, vi } from 'vitest'\nimport { apply } from '../src/module.ts'\n\ndescribe(${literal(`${options.id} profile`)}, () => {\n  it('registers a Chinese, non-runnable scaffold and releases it', async () => {\n    let definition: ModuleDefinition | undefined\n    let cleanup: (() => void) | undefined\n    const unregister = vi.fn()\n    apply({\n      moduleScheduler: { registry: { register: (value: ModuleDefinition) => { definition = value; return ${literal(`${options.id}@1.0.0`)} }, unregister } },\n      effect: (setup: () => () => void) => { cleanup = setup() },\n    } as unknown as Context)\n    expect(definition).toMatchObject({ id: ${literal(options.id)}, version: '1.0.0', displayName: ${literal(options.name)}, description: ${literal(options.description)}, tools: [] })\n    await expect(definition!.execute({} as never)).rejects.toThrow('module-implementation-required')\n    cleanup!()\n    expect(unregister).toHaveBeenCalledWith(${literal(`${options.id}@1.0.0`)})\n  })\n})\n`
 }
 
 function readmes(options: CreateModuleOptions): { en: string; zh: string } {
@@ -101,6 +112,15 @@ function readmes(options: CreateModuleOptions): { en: string; zh: string } {
 
 function hostConfigPath(root: string): string {
   return join(root, 'tsconfig.host.json')
+}
+
+function generatedTarget(root: string, relative: string): string {
+  const rootPath = realpathSync(root)
+  const target = resolve(rootPath, relative)
+  const info = lstatSync(target)
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('generated scaffold path is not a real directory')
+  if (realpathSync(target) !== target) throw new Error('generated scaffold path changed')
+  return target
 }
 
 function addHostReference(root: string, packagePath: string): void {
@@ -117,6 +137,7 @@ export function removeModuleScaffold(root: string, id: string): void {
   const relative = `packages/experimental/${id}-profile`
   const target = resolve(root, relative)
   if (!existsSync(target)) throw new Error(`scaffold does not exist: ${relative}`)
+  generatedTarget(root, relative)
 
   const packagePath = join(target, 'package.json')
   const packageJson = JSON.parse(readFileSync(packagePath, 'utf8')) as {
@@ -143,20 +164,36 @@ export function createModuleScaffold(root: string, options: CreateModuleOptions)
   const relative = `packages/experimental/${options.id}-profile`
   const target = resolve(root, relative)
   if (existsSync(target)) throw new Error(`target already exists: ${relative}`)
+  const parent = resolve(root, 'packages/experimental')
+  mkdirSync(parent, { recursive: true })
+  if (lstatSync(parent).isSymbolicLink() || realpathSync(parent) !== parent) throw new Error('module root path changed')
   const version = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }).version
   const packageName = `@deepseek-ai/dsh-experimental-${options.id}-profile`
   const { en, zh } = readmes(options)
-  write(join(target, 'package.json'), manifest(options, version))
-  write(join(target, 'tsconfig.json'), `${JSON.stringify({ extends: '../../../tsconfig.base.json', compilerOptions: { rootDir: 'src', outDir: 'lib/types' }, include: ['src'], references: [{ path: '../../../vendor/cordis' }, { path: '../module-scheduler' }] }, null, 2)}\n`)
-  write(join(target, 'src/index.ts'), "export * as modulePlugin from './module.ts'\n")
-  write(join(target, 'src/module.ts'), moduleSource(options))
-  write(join(target, 'tests/profile.spec.ts'), profileTest(options))
-  write(join(target, 'cordis.patch.yml'), `- insert:\n    - id: ${options.id}\n      name: '${packageName}/module'\n`)
-  write(join(target, 'README.md'), en)
-  write(join(target, 'README.zh.md'), zh)
-  write(join(target, 'README.i18n.yaml'), `# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each\n# side as of the last confirmed-consistent state. Both languages carry equal authority;\n# after editing either side, bring the other along and re-record with:\n#   pnpm run verify-translation-pairing --write ${relative}/README.md\nREADME.md: ${blobHash(en)}\nREADME.zh.md: ${blobHash(zh)}\n`)
-  addHostReference(root, `./${relative}`)
-  return relative
+  let hostReferenceAdded = false
+  try {
+    write(join(target, 'package.json'), manifest(options, version))
+    write(join(target, 'tsconfig.json'), `${JSON.stringify({ extends: '../../../tsconfig.base.json', compilerOptions: { rootDir: 'src', outDir: 'lib/types' }, include: ['src'], references: [{ path: '../../../vendor/cordis' }, { path: '../module-scheduler' }] }, null, 2)}\n`)
+    write(join(target, 'src/index.ts'), "export * as modulePlugin from './module.ts'\n")
+    write(join(target, 'src/module.ts'), moduleSource(options))
+    write(join(target, 'tests/profile.spec.ts'), profileTest(options))
+    write(join(target, 'cordis.patch.yml'), `- insert:\n    - id: ${options.id}\n      name: '${packageName}/module'\n`)
+    write(join(target, 'README.md'), en)
+    write(join(target, 'README.zh.md'), zh)
+    write(join(target, 'README.i18n.yaml'), `# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each\n# side as of the last confirmed-consistent state. Both languages carry equal authority;\n# after editing either side, bring the other along and re-record with:\n#   pnpm run verify-translation-pairing --write ${relative}/README.md\nREADME.md: ${blobHash(en)}\nREADME.zh.md: ${blobHash(zh)}\n`)
+    addHostReference(root, `./${relative}`)
+    hostReferenceAdded = true
+    return relative
+  } catch (error) {
+    if (hostReferenceAdded) {
+      const path = hostConfigPath(root)
+      const reference = `    { "path": "./${relative}" },\n`
+      const content = readFileSync(path, 'utf8')
+      if (content.split(reference).length - 1 === 1) writeFileSync(path, content.replace(reference, ''))
+    }
+    if (existsSync(target)) rmSync(target, { recursive: true, force: true })
+    throw error
+  }
 }
 
 function main(): void {

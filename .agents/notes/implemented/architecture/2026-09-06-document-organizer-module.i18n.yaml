@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-06-document-organizer-module.md
+2026-09-06-document-organizer-module.md: 1f74482fd58381b451ecc89319177dacbae6b0e9
+2026-09-06-document-organizer-module.zh.md: cf13f195143ac6177ca7ef632f7a38adfb7dc494

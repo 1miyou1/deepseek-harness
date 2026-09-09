@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-03-experimental-module-scheduler.md
-2026-09-03-experimental-module-scheduler.md: ed5de22778a9ba7f135b3ea8f820e51f809e5c25
-2026-09-03-experimental-module-scheduler.zh.md: a5a73479fe0b8ca77d26010073787d2f08254ed0
+2026-09-03-experimental-module-scheduler.md: 451d3a75a0da8a4066d88d1c75b34bb7f2497a34
+2026-09-03-experimental-module-scheduler.zh.md: fd09ba674abef0fd26f1b7e2def28fe01157e305
