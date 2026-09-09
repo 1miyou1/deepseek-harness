@@ -29,11 +29,11 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
 export declare const modelRoutingDecisionProjection: {
   key: 'modelRoutingDecision'
   stateVersion: number
-  stateSchema: z.ZodNullable<z.ZodType<ModelRoutingDecision, unknown, z.core.$ZodTypeInternals<ModelRoutingDecision, unknown>>>
+  stateSchema: z.ZodNullable<z.ZodType<ModelRoutingDecision>>
   init: () => null
   apply: (state: NoInfer<ModelRoutingDecision | null>, event: import('@deepseek-ai/dsh-session').SessionEvent) => ModelRoutingDecision | null
   wire: {
-    viewSchema: z.ZodNullable<z.ZodType<ModelRoutingDecision, unknown, z.core.$ZodTypeInternals<ModelRoutingDecision, unknown>>>
+    viewSchema: z.ZodNullable<z.ZodType<ModelRoutingDecision>>
     view: (state: NoInfer<ModelRoutingDecision | null>) => ModelRoutingDecision | null
   }
 }
