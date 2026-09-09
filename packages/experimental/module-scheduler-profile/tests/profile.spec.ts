@@ -46,6 +46,7 @@ describe('Module Scheduler host profile bundle', () => {
       '@deepseek-ai/dsh-experimental-module-scheduler': 'workspace:^',
       '@deepseek-ai/dsh-util-values': 'workspace:^',
       '@deepseek-ai/dsh-web': 'workspace:^',
+      '@deepseek-ai/schemastery': 'workspace:^',
     })
     expect(manifest.peerDependencies).toEqual({
       '@deepseek-ai/cordis': 'workspace:^',

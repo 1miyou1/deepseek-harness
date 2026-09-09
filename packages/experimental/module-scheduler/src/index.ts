@@ -9,6 +9,8 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
+const ABORT_DRAIN_GRACE_MS = 1_000
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     moduleScheduler: ModuleSchedulerService
@@ -464,7 +466,17 @@ export class ModuleCoordinator {
       try {
         output = await Promise.race([execution, aborted])
       } catch (error: unknown) {
-        if (entry.drainOnAbort && entry.controller.signal.aborted) await execution.catch(() => undefined)
+        if (entry.drainOnAbort && entry.controller.signal.aborted) {
+          let drainTimer!: ReturnType<typeof setTimeout>
+          const drainDeadline = new Promise<void>((resolve) => {
+            drainTimer = setTimeout(resolve, ABORT_DRAIN_GRACE_MS)
+          })
+          try {
+            await Promise.race([execution.catch(() => undefined), drainDeadline])
+          } finally {
+            clearTimeout(drainTimer)
+          }
+        }
         throw error
       }
       const outputErrors = validateSchema(entry.outputSchema, output)

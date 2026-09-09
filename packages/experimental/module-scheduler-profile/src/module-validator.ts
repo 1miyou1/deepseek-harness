@@ -3,7 +3,6 @@
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { existsSync, symlinkSync } from 'node:fs'
-import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { HostTool, ModuleDefinition } from '@deepseek-ai/dsh-experimental-module-scheduler'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -131,7 +130,7 @@ function command(root: string, module: string, name: Step): string[] {
   return name === 'test'
     ? [process.execPath, resolve(root, 'node_modules/vitest/vitest.mjs'), 'run', resolve(module, 'tests'), '--config', resolve(module, 'vitest.validator.config.mjs'), '--no-cache', '--configLoader', 'native', '--pool', 'threads', '--maxWorkers', '1']
     : name === 'lint'
-      ? [process.execPath, '--import', pathToFileURL(resolve(root, 'node_modules/tsx/dist/loader.mjs')).href, resolve(root, 'scripts/run-oxlint.ts'), module]
+      ? [process.execPath, resolve(root, 'scripts/run-oxlint.ts'), module]
       : [process.execPath, resolve(root, 'node_modules/typescript/bin/tsc'), '-p', resolve(module, 'tsconfig.json'), '--noEmit', '--composite', 'false', '--incremental', 'false']
 }
 async function runStep(

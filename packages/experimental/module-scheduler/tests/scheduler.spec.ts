@@ -208,6 +208,29 @@ describe('module scheduler contract', () => {
     expect(result.reason).toBe('timeout')
   })
 
+  it('bounds abort draining when execution ignores cancellation', async () => {
+    vi.useFakeTimers()
+    try {
+      const coordinator = new ModuleCoordinator()
+      const run = coordinator.run(
+        { sessionId: 'A', taskId: 'T', moduleRef: 'reader@1.0.0', input: { value: 'a' } },
+        { maxConcurrent: 1, queueLimit: 1, timeoutMs: 5 },
+        schema,
+        async () => await new Promise(() => {}),
+        true,
+      )
+      let settled = false
+      void run.then(() => { settled = true })
+
+      await vi.advanceTimersByTimeAsync(1_006)
+
+      expect(settled).toBe(true)
+      await expect(run).resolves.toMatchObject({ status: 'timed_out', reason: 'timeout' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('releases queue capacity when a queued run is cancelled', async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })

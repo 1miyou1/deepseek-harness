@@ -43,6 +43,24 @@ describe('document organizer module', () => {
     expect(result).toMatchObject({ ok: true, route: 'luna', fallback: false, changedFiles: ['content/a.md'] })
   })
 
+  it('does not apply a plan that arrives after cancellation', async () => {
+    const root = workspace()
+    const controller = new AbortController()
+    let resolvePlan!: (value: ReturnType<typeof plan>) => void
+    const run = vi.fn().mockReturnValue(new Promise((resolve) => { resolvePlan = resolve }))
+    const definition = createDocumentOrganizerDefinition(root, { runChecks: async () => [] })
+    const execution = definition.execute({
+      ...context({ files: ['content/a.md'], task: '整理文档' }, { run }),
+      signal: controller.signal,
+    })
+
+    controller.abort('timeout')
+    resolvePlan(plan({ writes: [{ path: 'content/a.md', expectedContent: '# A\n', content: '# Late\n' }] }))
+
+    await expect(execution).rejects.toBe('timeout')
+    expect(readFileSync(join(root, 'content/a.md'), 'utf8')).toBe('# A\n')
+  })
+
   it('falls back once to Terra only for a managed model error and never requests Sol', async () => {
     const root = workspace()
     const run = vi.fn()

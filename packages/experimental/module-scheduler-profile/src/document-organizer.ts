@@ -293,6 +293,7 @@ export function createDocumentOrganizerDefinition(
         route = 'terra'; fallback = true
         rawPlan = await requestPlan(agent, task, 'terra', resolved)
       }
+      signal.throwIfAborted()
       const plan = asPlan(rawPlan, resolved.maxPlanBytes)
       const applied = await applyPlan(root, allowed, plan, runtime, signal)
       return boundedOutput({ route, fallback, summary: plan.summary, ...applied }, resolved.maxOutputBytes)

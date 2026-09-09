@@ -24,17 +24,20 @@ function workspace(): string {
   return root
 }
 
-function runtime(exitCodes: number[] = [0, 0, 0], output = '') {
+function runtime(exitCodes: number[] = [0, 0, 0], output = '', commands?: string[][]) {
   let index = 0
   const terminate = vi.fn()
   return {
     terminate,
     sandbox: { confine: (argv: readonly string[]) => ({ argv: [...argv] }) },
-    subprocess: { spawn: () => ({
-      terminate,
-      collected: { stdout: { readFrom: () => ({ text: output, lossy: output.length > 4000 }) }, stderr: { readFrom: () => ({ text: '' }) } },
-      done: Promise.resolve({ exitCode: exitCodes[index++] ?? 0, signal: null }),
-    }) },
+    subprocess: { spawn: ({ argv }: { argv: readonly string[] }) => {
+      commands?.push([...argv])
+      return {
+        terminate,
+        collected: { stdout: { readFrom: () => ({ text: output, lossy: output.length > 4000 }) }, stderr: { readFrom: () => ({ text: '' }) } },
+        done: Promise.resolve({ exitCode: exitCodes[index++] ?? 0, signal: null }),
+      }
+    } },
   }
 }
 
@@ -60,6 +63,16 @@ describe('模块自动校验器', () => {
       { name: 'test', ok: true, exitCode: 0 }, { name: 'lint', ok: true, exitCode: 0 }, { name: 'typecheck', ok: true, exitCode: 0 },
     ] })
     expect(readFileSync(join(root, 'packages/experimental/example-profile/src/module.ts'), 'utf8')).toBe(before)
+  })
+
+  it('使用 Node 原生 TypeScript 执行 lint，不加载 tsx', async () => {
+    const root = workspace()
+    const commands: string[][] = []
+
+    await createModuleValidatorHostTool(root, runtime([0, 0, 0], '', commands))(input, context())
+
+    expect(commands[1]?.slice(0, 2)).toEqual([process.execPath, join(root, 'scripts/run-oxlint.ts')])
+    expect(commands[1]).not.toContain('--import')
   })
 
   it.each([
