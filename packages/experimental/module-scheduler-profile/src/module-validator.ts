@@ -1,7 +1,8 @@
 /** Fixed, read-only subprocess validation for one experimental module. */
 
-import { cp, lstat, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { existsSync, symlinkSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { HostTool, ModuleDefinition } from '@deepseek-ai/dsh-experimental-module-scheduler'
@@ -67,6 +68,7 @@ async function createValidationCopy(root: string, module: string): Promise<{ roo
     const copiedModule = resolve(tempRoot, relativeModule)
     await mkdir(resolve(copiedModule, '..'), { recursive: true })
     await cp(module, copiedModule, { recursive: true, dereference: false, filter: source => !relative(root, source).split(sep).includes('node_modules') })
+    await replicateWorkspaceLinks(resolve(module, 'node_modules'), resolve(copiedModule, 'node_modules'))
     const baseConfig = resolve(root, 'tsconfig.base.json')
     if (await lstat(baseConfig).then(() => true).catch(() => false)) await cp(baseConfig, resolve(tempRoot, 'tsconfig.base.json'))
     await writeFile(resolve(tempRoot, 'tsconfig.json'), '{"compilerOptions":{"module":"NodeNext","moduleResolution":"NodeNext","target":"ES2022","skipLibCheck":true,"types":["node"]}}\n')
@@ -78,6 +80,22 @@ async function createValidationCopy(root: string, module: string): Promise<{ roo
   }
 }
 
+/** Re-create workspace package links inside the validation copy so bare imports resolve as in the real workspace. */
+async function replicateWorkspaceLinks(sourceBase: string, targetBase: string): Promise<void> {
+  if (!existsSync(sourceBase)) return
+  await mkdir(targetBase, { recursive: true })
+  for (const entry of await readdir(sourceBase, { withFileTypes: true })) {
+    const source = resolve(sourceBase, entry.name)
+    const target = resolve(targetBase, entry.name)
+    if (entry.isSymbolicLink()) {
+      const real = await realpath(source).catch(() => undefined)
+      if (real === undefined) continue
+      try { symlinkSync(real, target, 'junction') } catch { /* A link that cannot be re-created stays absent from the copy. */ }
+    } else if (entry.isDirectory()) {
+      await replicateWorkspaceLinks(source, target)
+    }
+  }
+}
 async function modulePath(root: string, id: string): Promise<string> {
   if (!MODULE_ID.test(id)) throw new Error('validation-config-invalid')
   const expected = resolve(root, MODULE_ROOT, `${id}-profile`)
