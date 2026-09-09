@@ -26,6 +26,7 @@ import {
   captureDelegatedPolicyOverrides,
   childSessionMeta,
   finalAssistantOutput,
+  limitSubagentDiagnostic,
   resolveChildAgentOptions,
   resolveChildDepth,
 } from '@deepseek-ai/dsh-subagent'
@@ -248,11 +249,29 @@ function readResult(
   // Disposal can tear the owner down before the loop records its ordinary
   // `aborted` end, yielding `disposed` instead.
   const stopReason: SubagentStopReason = cancelled && recorded !== 'completed' ? 'aborted' : recorded
+  const diagnostic = turnFailureDiagnostic(lastEnd)
   if (structured !== undefined) {
     if (structured.captured !== undefined) {
-      return { output, structured: structured.captured.value, stopReason }
+      return { output, structured: structured.captured.value, stopReason, ...diagnostic === undefined ? {} : { diagnostic } }
     }
     if (stopReason === 'completed') return { output, stopReason: cancelled ? 'aborted' : 'error' }
   }
-  return { output, stopReason }
+  return { output, stopReason, ...diagnostic === undefined ? {} : { diagnostic } }
+}
+
+/**
+ * Project the child's turn failure onto the provider-authored diagnostic so
+ * consumers can present the cause instead of a bare `error` stop reason. The
+ * `LlmFailure` summary is display text by contract; the shared byte limit
+ * still applies defensively.
+ * @param end - the child's settled turn-end event, when recorded.
+ * @returns the failure summary, or undefined for non-error endings.
+ */
+function turnFailureDiagnostic(end: SessionEvent<'turn/end'> | undefined): string | undefined {
+  const reason = end?.data.reason
+  if (reason?.kind !== 'error') return undefined
+  const message = reason.error.message
+  if (message === '') return undefined
+  const code = reason.error.code
+  return limitSubagentDiagnostic(code === '' ? message : code + ': ' + message)
 }

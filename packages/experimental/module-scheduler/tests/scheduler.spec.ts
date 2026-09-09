@@ -1,7 +1,10 @@
 import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   ModuleCoordinator, ModuleRegistry, ModuleSchedulerService, createModuleRunner,
   type ModuleDefinition, type ModuleExecutionContext,
@@ -40,6 +43,78 @@ describe('module scheduler Cordis service', () => {
     await expect(active).resolves.toMatchObject({ status: 'cancelled', reason: 'disposed' })
     expect(ctx.moduleScheduler).toBeUndefined()
     release()
+  })
+
+  it('applies an explicit Luna or Terra route without installing Sol routing', async () => {
+    const ctx = new Context()
+    const start = vi.fn(async (_provider: string, _request: { agentOptions?: unknown; scopedSetup?: (ctx: Context) => Promise<void> }) => ({
+      id: SessionId('managed-child'), localAgent: undefined,
+      result: Promise.resolve({ output: [], stopReason: 'completed' as const, structured: { value: 'ok' } }),
+      dispose: () => Promise.resolve(),
+    }))
+    ctx.provide('subagents', { start, getProvider: () => ({ capabilities: { scopedTools: true, scopedSetup: true } }) } as unknown as SubagentRuntime)
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    const fiber = await ctx.plugin(ModuleSchedulerService, { managedAgentProvider: 'module-managed', agentStepModelRoutes: {
+      luna: { provider: 'mock', model: 'luna' },
+      terra: { provider: 'mock', model: 'terra' },
+      sol: { provider: 'mock', model: 'sol' },
+    } })
+    ctx.moduleScheduler.registry.register({
+      ...reader(async ({ agent }) => {
+        if (agent === undefined) throw new Error('missing managed agent')
+        return agent.run({
+          task: 'organize', tools: [], outputSchema: schema, maxSteps: 1,
+          maxTokensPerStep: 100, modelTier: 'luna',
+        })
+      }),
+      requiresAgent: true,
+    })
+
+    await expect(ctx.moduleScheduler.run({
+      sessionId: 'A', taskId: 'T', moduleRef: 'reader@1.0.0', input: { value: 'a' },
+    }, {} as Agent)).resolves.toMatchObject({ status: 'succeeded', output: { value: 'ok' } })
+    expect(start).toHaveBeenCalledWith('module-managed', expect.objectContaining({
+      agentOptions: { maxTokens: 100, provider: 'mock', model: 'luna' },
+    }))
+    const presentAs = vi.fn()
+    await start.mock.calls[0]?.[1].scopedSetup?.({ tools: { presentAs } } as unknown as Context)
+    expect(presentAs).toHaveBeenCalledWith('native')
+    expect(JSON.stringify(start.mock.calls)).not.toContain('sol')
+    await fiber.dispose()
+  })
+
+  it('projects the managed agent diagnostic into the run reason without dropping the stop reason', async () => {
+    const ctx = new Context()
+    let diagnostic: string | undefined = 'managed-agent-runtime-incompatible'
+    const start = vi.fn(async (_provider: string, _request: unknown) => ({
+      id: SessionId('managed-child'), localAgent: undefined,
+      result: Promise.resolve({ output: [], stopReason: 'error' as const, diagnostic }),
+      dispose: () => Promise.resolve(),
+    }))
+    ctx.provide('subagents', { start, getProvider: () => ({ capabilities: { scopedTools: true, scopedSetup: true } }) } as unknown as SubagentRuntime)
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    const fiber = await ctx.plugin(ModuleSchedulerService)
+    ctx.moduleScheduler.registry.register({
+      ...reader(async ({ agent }) => {
+        if (agent === undefined) throw new Error('missing managed agent')
+        return agent.run({ task: 'work', tools: [], outputSchema: schema, maxSteps: 1, maxTokensPerStep: 100 })
+      }),
+      requiresAgent: true,
+    })
+    const request = { sessionId: 'A', taskId: 'T', moduleRef: 'reader@1.0.0', input: { value: 'a' } }
+
+    await expect(ctx.moduleScheduler.run(request, {} as Agent)).resolves.toMatchObject({
+      status: 'failed',
+      reason: 'managed-agent-error; diagnostic: managed-agent-runtime-incompatible',
+    })
+    diagnostic = undefined
+    await expect(ctx.moduleScheduler.run(request, {} as Agent)).resolves.toMatchObject({
+      status: 'failed',
+      reason: 'managed-agent-error',
+    })
+    await fiber.dispose()
   })
 })
 

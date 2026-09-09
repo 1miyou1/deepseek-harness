@@ -311,7 +311,9 @@ describe('startInProcessRun', () => {
     const run = await startInProcessRun(request(parent), {})
     const child = ctx.agents.get(run.id)!
     expect(child.options).toEqual({ subagentDepth: 1 })
-    await expect(run.result).resolves.toMatchObject({ stopReason: 'error' })
+    const result = await run.result
+    expect(result.stopReason).toBe('error')
+    expect(typeof result.diagnostic).toBe('string')
     await run.dispose()
   })
 

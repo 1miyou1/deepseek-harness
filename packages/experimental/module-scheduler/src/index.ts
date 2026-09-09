@@ -64,9 +64,11 @@ export interface ManagedModuleAgentRequest {
   outputSchema: ModuleSchema
   maxSteps: number
   maxTokensPerStep: number
+  /** Optional exact non-Sol route for bounded module work. */
+  modelTier?: 'luna' | 'terra'
 }
 
-/** Narrow managed-Agent capability; model route is always inherited from the initiating Agent. */
+/** Narrow managed-Agent capability; runs inherit the initiating route unless they request exact Luna or Terra. */
 export interface ManagedModuleAgent {
   run(request: ManagedModuleAgentRequest): Promise<unknown>
 }
@@ -167,6 +169,8 @@ export interface ModuleSchedulerConfig extends Partial<ModulePolicy> {
   maxRecentRuns?: number
   /** Exact model routes installed only in module-managed child Agents. */
   agentStepModelRoutes?: TierRoutes
+  /** Subagent provider used only for module-managed child Agents. */
+  managedAgentProvider?: string
 }
 
 /** Promise handle for one isolated module run. */
@@ -555,11 +559,14 @@ export class ModuleSchedulerService extends TypertRemoteService {
   private readonly managedAgentTools = new Map<string, ManagedAgentToolFactory>()
   private readonly maxRecentRuns: number
   private readonly agentStepModelRoutes: TierRoutes | undefined
+  private readonly managedAgentProvider: string
 
   constructor(ctx: Context, config: ModuleSchedulerConfig = {}) {
     super(ctx, 'moduleScheduler')
-    const { maxRecentRuns = 50, agentStepModelRoutes, ...limits } = config
+    const { maxRecentRuns = 50, agentStepModelRoutes, managedAgentProvider = 'spawn', ...limits } = config
     this.agentStepModelRoutes = agentStepModelRoutes
+    if (managedAgentProvider === '') throw new Error('invalid-managed-agent-provider')
+    this.managedAgentProvider = managedAgentProvider
     if (!Number.isSafeInteger(maxRecentRuns) || maxRecentRuns < 0) throw new Error('invalid-run-history-limit')
     this.maxRecentRuns = maxRecentRuns
     this.coordinator = new ModuleCoordinator(limits)
@@ -692,42 +699,54 @@ export class ModuleSchedulerService extends TypertRemoteService {
         if (!Number.isSafeInteger(request.maxTokensPerStep) || request.maxTokensPerStep < 1) throw new Error('managed-agent-max-tokens-invalid')
         const subagents: SubagentRuntime | undefined = this.ctx.get('subagents')
         if (subagents === undefined) throw new Error('managed-agent-unavailable')
+        const provider = subagents.getProvider(this.managedAgentProvider)
+        if (provider === undefined || provider.capabilities.scopedTools !== true || provider.capabilities.scopedSetup !== true) {
+          throw new Error('managed-agent-runtime-incompatible')
+        }
         const scopedTools = request.tools.map((name) => {
           const execute = moduleTools.get(name)
           const factory = this.managedAgentTools.get(name)
           if (execute === undefined || factory === undefined) throw new Error(`managed-agent-tool-unavailable:${name}`)
           return factory(execute)
         })
+        const requestedRoute = request.modelTier === undefined
+          ? undefined
+          : this.agentStepModelRoutes?.[request.modelTier]
+        if (request.modelTier !== undefined && requestedRoute === undefined) {
+          throw new Error(`managed-agent-route-unavailable:${request.modelTier}`)
+        }
         let run: SubagentRun | undefined
         try {
-          run = await subagents.start('spawn', {
+          run = await subagents.start(this.managedAgentProvider, {
             label: 'module managed agent',
             prompt: [{ type: 'text', text: request.task }],
             parent: agent,
             signal,
-            agentOptions: { maxTokens: request.maxTokensPerStep },
+            agentOptions: { maxTokens: request.maxTokensPerStep, ...requestedRoute },
             outputSchema: request.outputSchema as ObjectJsonSchema,
             toolFilter: { allow: [] },
             scopedTools,
-            ...this.agentStepModelRoutes === undefined ? {} : {
-              scopedSetup: async (childCtx: Context) => {
-                const child = childCtx.agent as Agent
-                const { provider, model, reasoningEffort } = child.options
-                installModelSelection(child.ctx, {
-                  current: provider === undefined || model === undefined ? undefined : {
-                    provider,
-                    model,
-                    ...reasoningEffort === undefined ? {} : { reasoningEffort },
-                  },
-                  assembled: undefined,
-                })
-                await child.ctx.plugin(ModelRouter, this.agentStepModelRoutes)
-              },
+            scopedSetup: async (childCtx: Context) => {
+              childCtx.tools.presentAs('native')
+              if (this.agentStepModelRoutes === undefined || request.modelTier !== undefined) return
+              const child = childCtx.agent as Agent
+              const { provider, model, reasoningEffort } = child.options
+              installModelSelection(child.ctx, {
+                current: provider === undefined || model === undefined ? undefined : {
+                  provider,
+                  model,
+                  ...reasoningEffort === undefined ? {} : { reasoningEffort },
+                },
+                assembled: undefined,
+              })
+              await child.ctx.plugin(ModelRouter, this.agentStepModelRoutes)
             },
             maxSteps: request.maxSteps,
           })
           const result = await run.result
-          if (result.stopReason !== 'completed') throw new Error(`managed-agent-${result.stopReason}`)
+          if (result.stopReason !== 'completed') {
+            throw new Error(`managed-agent-${result.stopReason}${result.diagnostic === undefined ? '' : `; diagnostic: ${result.diagnostic}`}`)
+          }
           if (result.structured === undefined) throw new Error('managed-agent-structured-output-missing')
           return result.structured
         } finally {
@@ -807,7 +826,7 @@ export class ModuleSchedulerService extends TypertRemoteService {
           if (signal.aborted) throw Object.assign(new Error('cancelled'), { code: 'cancelled' })
           const tool = hostTools.get(name)
           if (!tool) throw new Error('tool-not-available')
-          return tool(args, { request, run: { ...result, signal } })
+          return tool(args, { request, run: { ...result, signal }, agent })
         },
       ]))
       return wrapped.execute({
