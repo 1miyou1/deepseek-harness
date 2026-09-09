@@ -1,6 +1,6 @@
 /** Fixed, read-only subprocess validation for one experimental module. */
 
-import { cp, lstat, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { existsSync, symlinkSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
@@ -69,6 +69,16 @@ async function createValidationCopy(root: string, module: string): Promise<{ roo
     await mkdir(resolve(copiedModule, '..'), { recursive: true })
     await cp(module, copiedModule, { recursive: true, dereference: false, filter: source => !relative(root, source).split(sep).includes('node_modules') })
     await replicateWorkspaceLinks(resolve(module, 'node_modules'), resolve(copiedModule, 'node_modules'))
+    // Reference entries point at sibling projects that do not exist inside the copy and make
+    // oxc refuse the whole tsconfig; the copy resolves imports through the replicated links.
+    const copiedConfig = resolve(copiedModule, 'tsconfig.json')
+    try {
+      const parsed = JSON.parse(await readFile(copiedConfig, 'utf8')) as { references?: unknown }
+      if (parsed.references !== undefined) {
+        delete parsed.references
+        await writeFile(copiedConfig, JSON.stringify(parsed, null, 2) + '\n')
+      }
+    } catch { /* A module tsconfig that is not plain JSON keeps its original content. */ }
     const baseConfig = resolve(root, 'tsconfig.base.json')
     if (await lstat(baseConfig).then(() => true).catch(() => false)) await cp(baseConfig, resolve(tempRoot, 'tsconfig.base.json'))
     await writeFile(resolve(tempRoot, 'tsconfig.json'), '{"compilerOptions":{"module":"NodeNext","moduleResolution":"NodeNext","target":"ES2022","skipLibCheck":true,"types":["node"]}}\n')
