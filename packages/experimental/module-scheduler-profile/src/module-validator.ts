@@ -29,13 +29,17 @@ export interface ModuleValidatorConfig {
   totalTimeoutMs?: number
   maxOutputBytes?: number
   graceMs?: number
+  /** Repository root that owns packages/experimental; defaults to the process working directory. */
+  root?: string
 }
 type ResolvedConfig = Required<ModuleValidatorConfig>
 
 /** Resolve defaults and reject unsafe validator budgets before registration. */
 export function resolveModuleValidatorConfig(config: ModuleValidatorConfig = {}): ResolvedConfig {
-  const resolved = { ...DEFAULT_CONFIG, ...config }
-  for (const [name, value] of Object.entries(resolved)) {
+  const resolved = { ...DEFAULT_CONFIG, root: process.cwd(), ...config }
+  if (typeof resolved.root !== 'string' || resolved.root === '') throw new Error('validation-config-invalid:root')
+  for (const [name, value] of Object.entries(resolved) as Array<[string, number]>) {
+    if (name === 'root') continue
     if (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647) throw new Error(`validation-config-invalid:${name}`)
   }
   if (resolved.maxOutputBytes < 2_048) throw new Error('validation-config-invalid:maxOutputBytes')
@@ -43,7 +47,7 @@ export function resolveModuleValidatorConfig(config: ModuleValidatorConfig = {})
 }
 
 function failure(code: string, message: string, failedStep?: Step, details?: Record<string, unknown>): Record<string, unknown> {
-  return { ok: false, moduleName: '模块自动校验器', status: code === 'validation-timeout' ? 'timed_out' : code === 'validation-cancelled' ? 'cancelled' : 'failed', ...(failedStep === undefined ? {} : { failedStep }), error: { code, message, ...details } }
+  return { ok: false, moduleName: '模块自动校验器', status: code === 'validation-timeout' ? 'timed_out' : code === 'validation-cancelled' ? 'cancelled' : 'failed', results: [], ...(failedStep === undefined ? {} : { failedStep }), error: { code, message, ...details } }
 }
 function inside(root: string, path: string): boolean { const child = relative(root, path); return child !== '' && !child.startsWith('..') && !isAbsolute(child) }
 function clip(text: string, maxBytes: number): string {
@@ -213,7 +217,7 @@ export function createModuleValidatorHostTool(root: string, runtime?: Runtime, c
 /** Register the validator and its private Host tool for this plugin lifetime. */
 export function applyModuleValidator(ctx: Context, config?: ModuleValidatorConfig): void {
   const resolved = resolveModuleValidatorConfig(config)
-  const root = process.cwd(); const runtime = ctx as Context & Runtime
+  const root = resolved.root; const runtime = ctx as Context & Runtime
   const dispose = ctx.moduleScheduler.registerHostTool('module-validator/run', createModuleValidatorHostTool(root, runtime, resolved))
   const ref = ctx.moduleScheduler.registry.register(createModuleValidatorDefinition(resolved))
   ctx.effect(() => () => { dispose(); ctx.moduleScheduler.registry.unregister(ref) }, 'module-validator: registration')

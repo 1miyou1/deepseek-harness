@@ -19,6 +19,7 @@ export const Config: z<Config> = z.object({
   totalTimeoutMs: z.number().default(180_000),
   maxOutputBytes: z.number().default(65_536),
   graceMs: z.number().default(1_000),
+  root: z.string().default(process.cwd()),
 })
 
 type Runtime = {
@@ -80,5 +81,5 @@ function checks(root: string, runtime: Runtime, config: Config): DocumentOrganiz
 /** Register the organizer with repository-local fixed documentation checks. */
 export function apply(ctx: Context, config: Config): void {
   const runtime = ctx as Context & Runtime
-  applyDocumentOrganizer(ctx, checks(process.cwd(), runtime, config), config)
+  applyDocumentOrganizer(ctx, checks(config.root ?? process.cwd(), runtime, config), config)
 }

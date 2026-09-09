@@ -8,7 +8,7 @@ import { LocalSandboxProvider } from '@deepseek-ai/dsh-sandbox-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { applyModuleValidator, createModuleValidatorHostTool, moduleValidatorDefinition } from '../src/module-validator.ts'
+import { applyModuleValidator, createModuleValidatorHostTool, moduleValidatorDefinition, resolveModuleValidatorConfig } from '../src/module-validator.ts'
 
 const roots: string[] = []
 const input = { id: 'example', targetFiles: ['src/module.ts'] }
@@ -136,6 +136,15 @@ describe('模块自动校验器', () => {
     await expect(createModuleValidatorHostTool(root, runtime())({ id: '../escape' }, context())).resolves.toMatchObject({ ok: false, error: { code: 'validation-config-invalid' } })
     await expect(createModuleValidatorHostTool(root, runtime())({ id: 'example', targetFiles: ['../outside'] }, context())).resolves.toMatchObject({ ok: false, error: { code: 'validation-path-outside-module' } })
     await expect(createModuleValidatorHostTool(root, runtime())({ id: 'example', targetFiles: ['missing.ts'] }, context())).resolves.toMatchObject({ ok: false, error: { code: 'validation-module-not-found' } })
+  })
+
+  it('root 配置覆盖进程工作目录，失败输出仍带空 results', async () => {
+    expect(resolveModuleValidatorConfig({ root: 'C:/custom-root' }).root).toBe('C:/custom-root')
+    expect(resolveModuleValidatorConfig().root).toBe(process.cwd())
+    expect(() => resolveModuleValidatorConfig({ root: '' })).toThrow('validation-config-invalid:root')
+    await expect(createModuleValidatorHostTool('C:/definitely-missing-root', runtime())(input, context())).resolves.toMatchObject({
+      ok: false, moduleName: '模块自动校验器', results: [],
+    })
   })
 
   it('用真实受管 subprocess 执行 test、lint、typecheck', async () => {

@@ -29,6 +29,8 @@ export interface DocumentOrganizerConfig {
   totalTimeoutMs?: number
   maxOutputBytes?: number
   graceMs?: number
+  /** Repository root that owns the declared documents; defaults to the process working directory. */
+  root?: string
 }
 
 /** Host-owned documentation checks run after applying a plan. */
@@ -40,8 +42,10 @@ export interface DocumentOrganizerRuntime {
 type ResolvedConfig = Required<DocumentOrganizerConfig>
 
 function resolveConfig(config: DocumentOrganizerConfig = {}): ResolvedConfig {
-  const value = { ...DEFAULT_CONFIG, ...config }
-  for (const [name, limit] of Object.entries(value)) {
+  const value = { ...DEFAULT_CONFIG, root: process.cwd(), ...config }
+  if (typeof value.root !== 'string' || value.root === '') throw new Error('document-organizer-config-invalid:root')
+  for (const [name, limit] of Object.entries(value) as Array<[string, number]>) {
+    if (name === 'root') continue
     if (!Number.isSafeInteger(limit) || limit < 1) throw new Error(`document-organizer-config-invalid:${name}`)
   }
   if (value.maxOutputBytes < 2_048) throw new Error('document-organizer-config-invalid:maxOutputBytes')
@@ -303,6 +307,7 @@ export function createDocumentOrganizerDefinition(
  * @param config - Deployment-owned run and content bounds.
  */
 export function applyDocumentOrganizer(ctx: Context, runtime: DocumentOrganizerRuntime, config?: DocumentOrganizerConfig): void {
-  const ref = ctx.moduleScheduler.registry.register(createDocumentOrganizerDefinition(process.cwd(), runtime, config))
+  const resolved = resolveConfig(config)
+  const ref = ctx.moduleScheduler.registry.register(createDocumentOrganizerDefinition(resolved.root, runtime, config))
   ctx.effect(() => () => { ctx.moduleScheduler.registry.unregister(ref) }, 'document-organizer: registration')
 }
