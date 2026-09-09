@@ -30,6 +30,9 @@ interface SubagentCapabilities {
   readonly depthLimit: boolean
   readonly toolFilter: boolean
   readonly persona: boolean
+  readonly scopedTools?: boolean
+  readonly scopedSetup?: boolean
+  readonly stepLimit?: boolean
 }
 ```
 
@@ -101,6 +104,12 @@ interface SubagentStartRequest {
    * persona (strict `{{…}}` interpolation against the registered variables).
    */
   readonly persona?: string
+  /** Trusted Host-only tools registered in this one-shot child's own scope. */
+  readonly scopedTools?: readonly ToolDefinition[]
+  /** Trusted Host-only composition applied in this one-shot child's own scope before its first step. */
+  readonly scopedSetup?: (ctx: Context) => void | Promise<void>
+  /** Maximum model steps in this one-shot child. */
+  readonly maxSteps?: number
 }
 ```
 
@@ -340,6 +349,8 @@ interface SubagentStopReasonMap {
   'max-tokens': 'max-tokens'
   /** The child declined the task. */
   refusal: 'refusal'
+  /** The child reached its caller-declared model-step ceiling. */
+  'max-steps': 'max-steps'
 }
 ```
 
