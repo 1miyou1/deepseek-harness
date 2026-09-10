@@ -8,6 +8,12 @@ import { defineTool, type ObjectJsonSchema, type ToolDefinition, type ToolRunCon
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import {
+  createPipelineRunner,
+  type PipelineDefinition,
+  type PipelineRunHandle,
+  type PipelineRunRequest,
+} from './pipeline.ts'
 
 const ABORT_DRAIN_GRACE_MS = 1_000
 
@@ -595,6 +601,23 @@ export class ModuleSchedulerService extends TypertRemoteService {
       },
       execute: async (args, exec) => await this.runFromTool(args.moduleRef, args.input, exec),
     }))
+    ctx.tools.register(defineTool({
+      name: 'pipeline_run',
+      description: 'Execute a multi-module DAG pipeline where outputs flow directly between modules without leaking intermediate state.',
+      parameters: {
+        pipeline: { type: 'json', required: true, description: 'Pipeline definition with nodes, dependencies, and outputNode.' },
+        input: { type: 'json', description: 'Optional initial input accessible by nodes as $input.prop.' },
+      },
+      output: {
+        schema: { type: 'json' },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      execute: async (args, exec) => {
+        const pipeline = args.pipeline as unknown as PipelineDefinition
+        const input = args.input as Record<string, unknown> | undefined
+        return await this.runPipelineFromTool(pipeline, input, exec)
+      },
+    }))
     ctx.systemPrompt.section({
       name: 'module-scheduler:catalog',
       order: 2550,
@@ -792,6 +815,37 @@ export class ModuleSchedulerService extends TypertRemoteService {
     }
   }
 
+  /** Run a pipeline of modules directly through DAG orchestration. */
+  private async runPipelineFromTool(
+    pipeline: PipelineDefinition,
+    input: Record<string, unknown> | undefined,
+    exec: ToolRunContext,
+  ): Promise<JsonValue> {
+    const agent = exec.agent
+    if (!agent) throw new Error('pipeline_run requires an initiating agent')
+    const runner = createPipelineRunner(req => this.run(req, agent))
+    const handle = runner({
+      sessionId: agent.session.id,
+      taskId: exec.callId,
+      pipeline,
+      ...input !== undefined ? { input } : {},
+    })
+    const cancel = (): void => { handle.cancel() }
+    if (exec.signal.aborted) cancel()
+    else exec.signal.addEventListener('abort', cancel, { once: true })
+    try {
+      return structuredClone(await handle) as unknown as JsonValue
+    } finally {
+      exec.signal.removeEventListener('abort', cancel)
+    }
+  }
+
+  /** Run a pipeline directly through the DAG runner. */
+  runPipeline(request: PipelineRunRequest, agent?: Agent): PipelineRunHandle {
+    const runner = createPipelineRunner(req => this.run(req, agent))
+    return runner(request)
+  }
+
   /** Run a module on behalf of one model-originated tool call. */
   private async runFromTool(moduleRef: string, input: JsonValue, exec: ToolRunContext): Promise<JsonValue> {
     const agent = exec.agent
@@ -888,5 +942,7 @@ function failure(message: string): { ok: false; error: ModuleConsoleError } {
 export function isTerminal(status: string): status is ModuleStatus {
   return terminal.has(status as ModuleStatus)
 }
+
+export * from './pipeline.ts'
 
 export default ModuleSchedulerService
