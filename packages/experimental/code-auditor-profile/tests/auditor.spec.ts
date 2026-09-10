@@ -125,4 +125,17 @@ describe('code-auditor profile', () => {
     expect(result.riskLevel).toBe('critical')
     expect(result.findings.some(f => f.rule === 'secret:github-token')).toBe(true)
   })
+
+  it('detects sensitive untracked files from git status', async () => {
+    const subprocess = mockSubprocess({
+      '--is-inside-work-tree': 'true',
+      'diff': '',
+      '--porcelain': '?? .env.production\n?? normal.ts\n',
+    })
+
+    const result = await auditCode(subprocess, { targetPath: process.cwd() })
+    expect(result.passed).toBe(false)
+    expect(result.riskLevel).toBe('critical')
+    expect(result.findings.some(f => f.rule === 'security:sensitive-file-tampering' && f.file === '.env.production')).toBe(true)
+  })
 })

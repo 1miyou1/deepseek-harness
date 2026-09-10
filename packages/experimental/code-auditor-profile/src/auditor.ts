@@ -1,5 +1,6 @@
 /** Core implementation of code and diff auditing. */
 
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 
@@ -237,13 +238,46 @@ export async function auditCode(
     ? ['diff', input.diffBase]
     : ['diff', 'HEAD']
 
-  let diffRun = await runGit(subprocess, diffArgs, cwd, signal)
-  if (diffRun.stdout.trim() === '') {
-    // Fallback to diff against staged or working tree
-    diffRun = await runGit(subprocess, ['diff'], cwd, signal)
+  const [diffRun, statusRun] = await Promise.all([
+    runGit(subprocess, diffArgs, cwd, signal),
+    runGit(subprocess, ['status', '--porcelain'], cwd, signal),
+  ])
+
+  let diffText = diffRun.stdout
+  if (diffText.trim() === '') {
+    const workingDiff = await runGit(subprocess, ['diff'], cwd, signal)
+    diffText = workingDiff.stdout
   }
 
-  const fileDiffs = parseDiff(diffRun.stdout)
+  const fileDiffs = parseDiff(diffText)
+
+  // Scan untracked files from git status
+  const untrackedFiles = statusRun.stdout
+    .split(/\r?\n/u)
+    .filter(line => line.startsWith('?? '))
+    .map(line => line.slice(3).trim().replaceAll(/^"|"$/gu, ''))
+
+  for (const untracked of untrackedFiles) {
+    const fullPath = resolve(cwd, untracked)
+    let lines: DiffLine[] = []
+    if (existsSync(fullPath)) {
+      try {
+        const stat = statSync(fullPath)
+        if (stat.isFile() && stat.size <= 256 * 1024) {
+          const content = readFileSync(fullPath, 'utf8')
+          lines = content.split(/\r?\n/u).map((line, idx) => ({ lineNum: idx + 1, content: line }))
+        }
+      } catch {
+        // Unreadable or binary files keep empty line list
+      }
+    }
+    fileDiffs.push({
+      file: untracked,
+      additions: lines.length,
+      deletions: 0,
+      lines,
+    })
+  }
   let totalAdditions = 0
   let totalDeletions = 0
   for (const diff of fileDiffs) {
