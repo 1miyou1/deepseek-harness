@@ -1,0 +1,3 @@
+- insert:
+    - id: git-inspector
+      name: '@deepseek-ai/dsh-experimental-git-inspector-profile/module'

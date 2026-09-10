@@ -67,10 +67,18 @@ async function createValidationCopy(root: string, module: string): Promise<{ roo
     const copiedModule = resolve(tempRoot, relativeModule)
     await mkdir(resolve(copiedModule, '..'), { recursive: true })
     await cp(module, copiedModule, { recursive: true, dereference: false, filter: source => !relative(root, source).split(sep).includes('node_modules') })
-    const sourceLinks = existsSync(resolve(module, 'node_modules'))
-      ? resolve(module, 'node_modules')
-      : resolve(root, 'packages/experimental/module-scheduler-profile/node_modules')
-    await replicateWorkspaceLinks(sourceLinks, resolve(copiedModule, 'node_modules'))
+    const moduleNodeModules = resolve(module, 'node_modules')
+    if (existsSync(moduleNodeModules)) {
+      await replicateWorkspaceLinks(moduleNodeModules, resolve(copiedModule, 'node_modules'))
+    } else {
+      const fallbackDonors = [
+        resolve(root, 'packages/experimental/module-scheduler-profile/node_modules'),
+        resolve(root, 'packages/experimental/android-environment-diagnostics-profile/node_modules'),
+      ]
+      for (const donor of fallbackDonors) {
+        if (existsSync(donor)) await replicateWorkspaceLinks(donor, resolve(copiedModule, 'node_modules'))
+      }
+    }
     // Reference entries point at sibling projects that do not exist inside the copy and make
     // oxc refuse the whole tsconfig; the copy resolves imports through the replicated links.
     const copiedConfig = resolve(copiedModule, 'tsconfig.json')
@@ -82,7 +90,21 @@ async function createValidationCopy(root: string, module: string): Promise<{ roo
       }
     } catch { /* A module tsconfig that is not plain JSON keeps its original content. */ }
     const baseConfig = resolve(root, 'tsconfig.base.json')
-    if (await lstat(baseConfig).then(() => true).catch(() => false)) await cp(baseConfig, resolve(tempRoot, 'tsconfig.base.json'))
+    if (await lstat(baseConfig).then(() => true).catch(() => false)) {
+      try {
+        const raw = await readFile(baseConfig, 'utf8')
+        const stripped = raw.replaceAll(/\/\/[^\r\n]*/g, '')
+        const base = JSON.parse(stripped) as { compilerOptions?: { paths?: unknown } }
+        if (base.compilerOptions?.paths !== undefined) {
+          delete base.compilerOptions.paths
+          await writeFile(resolve(tempRoot, 'tsconfig.base.json'), JSON.stringify(base, null, 2) + '\n')
+        } else {
+          await cp(baseConfig, resolve(tempRoot, 'tsconfig.base.json'))
+        }
+      } catch {
+        await cp(baseConfig, resolve(tempRoot, 'tsconfig.base.json'))
+      }
+    }
     await writeFile(resolve(tempRoot, 'tsconfig.json'), '{"compilerOptions":{"module":"NodeNext","moduleResolution":"NodeNext","target":"ES2022","skipLibCheck":true,"types":["node"]}}\n')
     await writeFile(resolve(copiedModule, 'vitest.validator.config.mjs'), "export default { test: { pool: 'threads', maxWorkers: 1 } }\n")
     return { root: tempRoot, module: copiedModule }
