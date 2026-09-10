@@ -1,0 +1,4 @@
+name: code-implementer-profile
+insert:
+  - after: moduleScheduler
+    plugin: '@deepseek-ai/dsh-experimental-code-implementer-profile'
