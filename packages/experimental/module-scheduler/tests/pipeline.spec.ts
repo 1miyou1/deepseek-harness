@@ -255,4 +255,97 @@ describe('module scheduler pipeline & DAG runner', () => {
 
     await fiber.dispose()
   })
+
+  it('executes full-cycle-dev-flow 4-step pipeline and enforces circuit-breaker on test failure', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    const fiber = await ctx.plugin(ModuleSchedulerService)
+
+    const devTemplate = ctx.moduleScheduler.templates.get('full-cycle-dev-flow@1.0.0')
+    expect(devTemplate.id).toBe('full-cycle-dev-flow')
+    expect(devTemplate.pipeline.nodes.length).toBe(4)
+
+    let implementCalled = false
+    let testCalled = false
+    let auditCalled = false
+
+    ctx.moduleScheduler.registry.register({
+      id: 'code-implementer',
+      version: '1.0.0',
+      displayName: '代码实现器',
+      description: '执行代码写入',
+      tools: [],
+      inputSchema: { type: 'object' },
+      outputSchema: { type: 'object' },
+      resourcePolicy: { maxConcurrent: 2, queueLimit: 2, timeoutMs: 2000 },
+      execute: async () => {
+        implementCalled = true
+        return { ok: true, changedFiles: ['src/app.ts'] }
+      },
+    })
+
+    // Simulated test failure triggering circuit breaker
+    ctx.moduleScheduler.registry.register({
+      id: 'test-runner',
+      version: '1.0.0',
+      displayName: '测试运行器',
+      description: '执行测试',
+      tools: [],
+      inputSchema: { type: 'object' },
+      outputSchema: { type: 'object' },
+      resourcePolicy: { maxConcurrent: 2, queueLimit: 2, timeoutMs: 2000 },
+      execute: async () => {
+        testCalled = true
+        throw new Error('test-suite-failed: 2 failed')
+      },
+    })
+
+    ctx.moduleScheduler.registry.register({
+      id: 'code-auditor',
+      version: '1.0.0',
+      displayName: '代码审计器',
+      description: '代码审计',
+      tools: [],
+      inputSchema: { type: 'object' },
+      outputSchema: { type: 'object' },
+      resourcePolicy: { maxConcurrent: 2, queueLimit: 2, timeoutMs: 2000 },
+      execute: async () => {
+        auditCalled = true
+        return { safe: true }
+      },
+    })
+
+    ctx.moduleScheduler.registry.register({
+      id: 'independent-review',
+      version: '1.0.0',
+      displayName: '独立审查器',
+      description: '独立审查',
+      tools: [],
+      inputSchema: { type: 'object' },
+      outputSchema: { type: 'object' },
+      resourcePolicy: { maxConcurrent: 2, queueLimit: 2, timeoutMs: 2000 },
+      execute: async () => ({ verdict: 'approved' }),
+    })
+
+    const handle = ctx.moduleScheduler.runPipeline({
+      sessionId: 'test-session',
+      taskId: 'test-task',
+      pipeline: devTemplate.pipeline,
+      input: { edits: [], targetPath: 'src/' },
+    })
+
+    const result = await handle
+    expect(result.status).toBe('failed')
+    expect(implementCalled).toBe(true)
+    expect(testCalled).toBe(true)
+    // Circuit breaker: downstream audit node MUST NOT be called and marked blocked!
+    expect(auditCalled).toBe(false)
+    expect(result.nodes['audit']?.status).toBe('blocked')
+    expect(result.nodes['audit']?.reason).toBe('dependency-not-succeeded')
+    expect(result.nodes['review']?.status).toBe('blocked')
+
+    await fiber.dispose()
+  })
+
 })

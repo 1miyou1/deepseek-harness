@@ -290,6 +290,40 @@ export const BUILTIN_PIPELINE_TEMPLATES: readonly PipelineTemplate[] = [
     },
   },
   {
+    id: 'full-cycle-dev-flow',
+    version: '1.0.0',
+    displayName: '企业级全自动TDD开发闭环流水线',
+    description: '原子修改实现 (code-implementer) -> 降噪跑测诊断 (test-runner) -> 静态安全审计 (code-auditor) -> 架构测试审查 (independent-review) 4步直通流水线。',
+    pipeline: {
+      nodes: [
+        {
+          id: 'implement',
+          moduleRef: 'code-implementer@1.0.0',
+          inputMap: { edits: '$input.edits', writePaths: '$input.writePaths', cwd: '$input.cwd' },
+        },
+        {
+          id: 'test',
+          moduleRef: 'test-runner@1.0.0',
+          dependsOn: ['implement'],
+          inputMap: { testPath: '$input.testPath', cwd: '$input.cwd' },
+        },
+        {
+          id: 'audit',
+          moduleRef: 'code-auditor@1.0.0',
+          dependsOn: ['test'],
+          inputMap: { targetPath: '$input.targetPath' },
+        },
+        {
+          id: 'review',
+          moduleRef: 'independent-review@1.0.0',
+          dependsOn: ['audit'],
+          inputMap: { targetPath: '$input.targetPath' },
+        },
+      ],
+      outputNode: 'review',
+    },
+  },
+  {
     id: 'video-audio-analysis-flow',
     version: '1.0.0',
     displayName: '音视频语音分析流水线',
