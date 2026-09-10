@@ -47,6 +47,14 @@ const SENSITIVE_PATTERNS = [
   /credentials(?:\.json)?$/iu,
 ]
 
+/**
+ * Normalize workspace path string with consistent uppercase Windows drive letter.
+ */
+export function normalizeWorkspacePath(targetPath: string): string {
+  const resolved = resolve(targetPath)
+  return resolved.replace(/^([a-z]):\\/u, (_, drive) => `${drive.toUpperCase()}:\\`)
+}
+
 function isInsideOrEqual(parent: string, child: string): boolean {
   const normParent = resolve(parent)
   const normChild = resolve(child)

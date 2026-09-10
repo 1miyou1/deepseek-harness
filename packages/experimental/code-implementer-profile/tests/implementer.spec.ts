@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ModuleDefinition, ModuleExecutionContext } from '@deepseek-ai/dsh-experimental-module-scheduler'
 import { describe, expect, it } from 'vitest'
-import { executeCodeImplementation } from '../src/implementer.ts'
+import { executeCodeImplementation, normalizeWorkspacePath } from '../src/implementer.ts'
 import { apply } from '../src/module.ts'
 
 describe('code-implementer dedicated module', () => {
@@ -53,6 +53,11 @@ describe('code-implementer dedicated module', () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true })
     }
+  })
+
+  it('normalizes workspace path with uppercase drive letter on Windows', () => {
+    const norm = normalizeWorkspacePath('c:\\users\\test')
+    expect(norm).toBe('C:\\users\\test')
   })
 
   it('rejects tampering with sensitive credential and configuration files', async () => {
