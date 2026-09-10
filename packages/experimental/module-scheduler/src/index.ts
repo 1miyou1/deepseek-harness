@@ -14,6 +14,7 @@ import {
   type PipelineRunHandle,
   type PipelineRunRequest,
 } from './pipeline.ts'
+import { PathLockManager } from './workspace-lock.ts'
 
 const ABORT_DRAIN_GRACE_MS = 1_000
 
@@ -44,12 +45,19 @@ export type ModuleSchema =
   | { type: 'array'; items: ModuleSchema; minItems?: number; maxItems?: number }
   | { type: 'string' | 'number' | 'boolean' }
 
+/** Filesystem workspace scope for writable module executions. */
+export interface ModuleWorkspaceScope {
+  readonly cwd?: string
+  readonly writePaths?: readonly string[]
+}
+
 /** Input identifying one module run. */
 export interface ModuleRunRequest {
   sessionId: string
   taskId: string
   moduleRef: string
   input?: unknown
+  workspace?: ModuleWorkspaceScope
 }
 
 /** Concurrency, queue, and timeout limits for a module. */
@@ -339,6 +347,7 @@ export class ModuleRegistry {
 }
 
 interface Entry {
+  request: ModuleRunRequest
   result: ModuleRunResult
   controller: AbortController
   resolve: (result: ModuleRunResult) => void
@@ -355,6 +364,7 @@ export class ModuleCoordinator {
   private readonly queue: Entry[] = []
   private readonly runs = new Map<string, Entry>()
   private readonly limits: ModulePolicy
+  private readonly pathLocks = new PathLockManager()
   private disposed = false
 
   constructor(limits: Partial<ModulePolicy> = {}) {
@@ -369,6 +379,7 @@ export class ModuleCoordinator {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    this.pathLocks.clear()
     for (const entry of this.queue.splice(0)) this.finishQueued(entry, 'cancelled', 'disposed')
     for (const entry of this.runs.values()) entry.controller.abort('disposed')
   }
@@ -402,6 +413,7 @@ export class ModuleCoordinator {
       resolve = done
     }) as ModuleRunHandle
     const entry: Entry = {
+      request,
       result,
       controller,
       resolve,
@@ -437,7 +449,9 @@ export class ModuleCoordinator {
 
   private canStart(entry: Entry): boolean {
     const moduleActive = this.activeByModule.get(entry.result.moduleRef) ?? 0
-    return this.active < this.limits.maxConcurrent && moduleActive < entry.policy.maxConcurrent
+    const writePaths = entry.request.workspace?.writePaths ?? []
+    const hasPathConflict = writePaths.length > 0 && this.pathLocks.isLocked(writePaths, entry.result.runId)
+    return !hasPathConflict && this.active < this.limits.maxConcurrent && moduleActive < entry.policy.maxConcurrent
   }
 
   private canQueue(entry: Entry): boolean {
@@ -454,6 +468,8 @@ export class ModuleCoordinator {
     this.active += 1
     const moduleRef = entry.result.moduleRef
     this.activeByModule.set(moduleRef, (this.activeByModule.get(moduleRef) ?? 0) + 1)
+    const writePaths = entry.request.workspace?.writePaths ?? []
+    const releaseLock = writePaths.length > 0 ? this.pathLocks.acquire(writePaths, entry.result.runId) : null
     entry.result.status = 'running'
     const timer = setTimeout(() => {
       entry.controller.abort('timeout')
@@ -494,6 +510,7 @@ export class ModuleCoordinator {
       final = { ...entry.result, status, validated: false, reason: errorMessage(error) }
     } finally {
       clearTimeout(timer)
+      releaseLock?.()
     }
     this.active -= 1
     this.activeByModule.set(moduleRef, (this.activeByModule.get(moduleRef) ?? 1) - 1)
@@ -944,5 +961,6 @@ export function isTerminal(status: string): status is ModuleStatus {
 }
 
 export * from './pipeline.ts'
+export * from './workspace-lock.ts'
 
 export default ModuleSchedulerService
