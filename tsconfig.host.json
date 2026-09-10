@@ -303,6 +303,7 @@
     { "path": "./packages/experimental/module-scheduler-profile" },
     { "path": "./packages/experimental/git-inspector-profile" },
     { "path": "./packages/experimental/code-auditor-profile" },
+    { "path": "./packages/experimental/video-analyzer-profile" },
     { "path": "./packages/experimental/module-scheduler-web-profile" },
     { "path": "./packages/experimental/agent-team-profile" },
     { "path": "./packages/experimental/tool-agent-team" },
