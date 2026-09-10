@@ -1,0 +1,4 @@
+name: test-runner-profile
+insert:
+  - after: moduleScheduler
+    plugin: '@deepseek-ai/dsh-experimental-test-runner-profile'
