@@ -187,4 +187,59 @@ describe('module scheduler pipeline & DAG runner', () => {
     release()
     await fiber.dispose()
   })
+
+  it('provides built-in pipeline templates and executes them via template runner', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    const fiber = await ctx.plugin(ModuleSchedulerService)
+
+    // Verify built-in templates exist
+    const templates = ctx.moduleScheduler.templates.list()
+    expect(templates.length).toBeGreaterThanOrEqual(2)
+    const reviewTemplate = ctx.moduleScheduler.templates.get('code-review-flow@1.0.0')
+    expect(reviewTemplate.id).toBe('code-review-flow')
+    expect(reviewTemplate.pipeline.nodes.length).toBe(2)
+
+    // Register dummy implementations for the template modules
+    ctx.moduleScheduler.registry.register({
+      id: 'git-inspector',
+      version: '1.0.0',
+      displayName: 'Git状态检查器',
+      description: '分析Git状态',
+      tools: [],
+      inputSchema: { type: 'object' },
+      outputSchema: { type: 'object' },
+      resourcePolicy: { maxConcurrent: 2, queueLimit: 2, timeoutMs: 2000 },
+      execute: async ({ input }) => ({ branch: 'feat/test', path: (input as { targetPath: string }).targetPath }),
+    })
+
+    ctx.moduleScheduler.registry.register({
+      id: 'code-auditor',
+      version: '1.0.0',
+      displayName: '代码审计器',
+      description: '审计代码变更',
+      tools: [],
+      inputSchema: { type: 'object' },
+      outputSchema: { type: 'object' },
+      resourcePolicy: { maxConcurrent: 2, queueLimit: 2, timeoutMs: 2000 },
+      execute: async ({ input }) => ({ safe: true, auditedPath: (input as { targetPath: string }).targetPath }),
+    })
+
+    // Execute the template pipeline directly
+    const handle = ctx.moduleScheduler.runPipeline({
+      sessionId: 'test-session',
+      taskId: 'test-task',
+      pipeline: reviewTemplate.pipeline,
+      input: { targetPath: 'src/' },
+    })
+
+    const result = await handle
+    expect(result.status).toBe('succeeded')
+    expect(result.nodes['inspect-git']?.status).toBe('succeeded')
+    expect(result.nodes['audit-code']?.status).toBe('succeeded')
+    expect(result.output).toEqual({ safe: true, auditedPath: 'src/' })
+
+    await fiber.dispose()
+  })
 })

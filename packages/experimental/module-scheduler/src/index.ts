@@ -10,6 +10,7 @@ import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import {
   createPipelineRunner,
+  PipelineTemplateRegistry,
   type PipelineDefinition,
   type PipelineRunHandle,
   type PipelineRunRequest,
@@ -586,6 +587,8 @@ export class ModuleSchedulerService extends TypertRemoteService {
 
   /** Shared immutable module registry. */
   readonly registry: ModuleRegistry = new ModuleRegistry()
+  /** Built-in and registered pipeline workflow templates. */
+  readonly templates: PipelineTemplateRegistry = new PipelineTemplateRegistry()
   /** Bounded coordinator for all runs. */
   readonly coordinator: ModuleCoordinator
   private readonly recentRuns = new Map<string, ModuleRunView[]>()
@@ -635,21 +638,50 @@ export class ModuleSchedulerService extends TypertRemoteService {
         return await this.runPipelineFromTool(pipeline, input, exec)
       },
     }))
+    ctx.tools.register(defineTool({
+      name: 'pipeline_template_run',
+      description: 'Execute a pre-configured multi-module pipeline workflow template (e.g. code-review-flow, video-audio-analysis-flow).',
+      parameters: {
+        templateRef: { type: 'string', required: true, description: 'Template identifier or reference (e.g. code-review-flow@1.0.0).' },
+        input: { type: 'json', description: 'Initial input accessible across the pipeline as $input.prop.' },
+      },
+      output: {
+        schema: { type: 'json' },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      execute: async (args, exec) => {
+        const template = this.templates.get(args.templateRef)
+        const input = args.input as Record<string, unknown> | undefined
+        return await this.runPipelineFromTool(template.pipeline, input, exec)
+      },
+    }))
     ctx.systemPrompt.section({
       name: 'module-scheduler:catalog',
       order: 2550,
       text: () => {
         const modules = this.registry.list()
-        if (modules.length === 0) return ''
+        const templates = this.templates.list()
+        if (modules.length === 0 && templates.length === 0) return ''
         const lines = [
-          '## 专职模块自动调度规则 (Dedicated Module Delegation)',
-          '当用户的任务意图匹配以下已注册专职模块时，必须优先使用 `module_run` 将任务委派给专职模块执行，禁止主代理自行执行多步繁重指令或手写脏活脚本：',
+          '## 专职模块与预置流水线调度规则 (Dedicated Module & Pipeline Delegation)',
+          '当用户的任务意图匹配以下已注册专职模块或流水线模板时，必须优先使用 `module_run` 或 `pipeline_template_run` 委派执行，禁止主代理自行执行多步繁重指令或手写脏活脚本：',
           '',
         ]
-        for (const m of modules) {
-          lines.push(`- \`${m.id}@${m.version}\` (${m.displayName})：${m.description}`)
+        if (modules.length > 0) {
+          lines.push('### 专职执行模块')
+          for (const m of modules) {
+            lines.push(`- \`${m.id}@${m.version}\` (${m.displayName})：${m.description}`)
+          }
+          lines.push('')
         }
-        lines.push('', '调用规范：直接调用 `module_run`，传入模块标识 `moduleRef` 与对应参数；模块执行完成后，依据模块返回的结构化结果向用户汇报。')
+        if (templates.length > 0) {
+          lines.push('### 预置流水线模板')
+          for (const t of templates) {
+            lines.push(`- \`${t.id}@${t.version}\` (${t.displayName})：${t.description}`)
+          }
+          lines.push('')
+        }
+        lines.push('调用规范：调用单个模块用 `module_run`；调用流水线用 `pipeline_template_run`（传入 `templateRef` 与参数）；执行完成后依据结构化结果汇报。')
         return lines.join('\n')
       },
     })

@@ -247,3 +247,86 @@ export function createPipelineRunner(
     })
   }
 }
+
+/**
+ * Pipeline template definition and registry for pre-configured module workflows.
+ */
+export interface PipelineTemplate {
+  readonly id: string
+  readonly version: string
+  readonly displayName: string
+  readonly description: string
+  readonly pipeline: PipelineDefinition
+}
+
+/** Built-in pipeline templates matching project specifications. */
+export const BUILTIN_PIPELINE_TEMPLATES: readonly PipelineTemplate[] = [
+  {
+    id: 'code-review-flow',
+    version: '1.0.0',
+    displayName: '代码审查流水线',
+    description: '工作区变更与状态检查 (git-inspector) -> 源码与敏感红线静态安全审计 (code-auditor) 管道直通流水线。',
+    pipeline: {
+      nodes: [
+        {
+          id: 'inspect-git',
+          moduleRef: 'git-inspector@1.0.0',
+          inputMap: { targetPath: '$input.targetPath' },
+        },
+        {
+          id: 'audit-code',
+          moduleRef: 'code-auditor@1.0.0',
+          dependsOn: ['inspect-git'],
+          inputMap: { targetPath: '$input.targetPath' },
+        },
+      ],
+      outputNode: 'audit-code',
+    },
+  },
+  {
+    id: 'video-audio-analysis-flow',
+    version: '1.0.0',
+    displayName: '音视频语音分析流水线',
+    description: '本地音视频音轨提取与 GPU SenseVoice 富文本语音转写 (video-analyzer) 流水线。',
+    pipeline: {
+      nodes: [
+        {
+          id: 'transcribe',
+          moduleRef: 'video-analyzer@1.0.0',
+          inputMap: { videoPath: '$input.videoPath' },
+        },
+      ],
+      outputNode: 'transcribe',
+    },
+  },
+]
+
+export class PipelineTemplateRegistry {
+  private readonly templates = new Map<string, PipelineTemplate>()
+
+  constructor(initial: readonly PipelineTemplate[] = BUILTIN_PIPELINE_TEMPLATES) {
+    for (const t of initial) this.register(t)
+  }
+
+  register(template: PipelineTemplate): void {
+    validatePipelineDefinition(template.pipeline)
+    const key = `${template.id}@${template.version}`
+    if (this.templates.has(key)) throw new Error(`duplicate-pipeline-template:${key}`)
+    this.templates.set(key, template)
+    this.templates.set(template.id, template)
+  }
+
+  get(templateRef: string): PipelineTemplate {
+    const found = this.templates.get(templateRef)
+    if (!found) throw new Error(`unknown-pipeline-template:${templateRef}`)
+    return found
+  }
+
+  list(): PipelineTemplate[] {
+    const unique = new Map<string, PipelineTemplate>()
+    for (const t of this.templates.values()) {
+      unique.set(`${t.id}@${t.version}`, t)
+    }
+    return Array.from(unique.values())
+  }
+}

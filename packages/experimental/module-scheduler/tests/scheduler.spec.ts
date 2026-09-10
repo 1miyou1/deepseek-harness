@@ -133,9 +133,10 @@ describe('module scheduler Cordis service', () => {
     const assembly = await ctx.systemPrompt.assemble({})
     const catalogSection = assembly.sections.find(s => s.name === 'module-scheduler:catalog')
     expect(catalogSection).toBeDefined()
-    expect(catalogSection?.text).toContain('专职模块自动调度规则')
+    expect(catalogSection?.text).toContain('专职模块与预置流水线调度规则')
     expect(catalogSection?.text).toContain('reader@1.0.0')
     expect(catalogSection?.text).toContain('读取输入数据')
+    expect(catalogSection?.text).toContain('code-review-flow@1.0.0')
 
     await fiber.dispose()
   })
