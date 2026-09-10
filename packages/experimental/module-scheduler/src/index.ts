@@ -740,6 +740,12 @@ export class ModuleSchedulerService extends TypertRemoteService {
             scopedTools,
             scopedSetup: async (childCtx: Context) => {
               childCtx.tools.presentAs('native')
+              childCtx.systemPrompt.section({
+                name: 'module:minimal-system-prompt',
+                order: 0,
+                complete: true,
+                text: 'You are a dedicated, single-purpose module agent. Execute the requested task using ONLY the declared scoped tools. Return structured output strictly matching the output schema without extraneous conversational prose.',
+              })
               if (this.agentStepModelRoutes === undefined || request.modelTier !== undefined) return
               const child = childCtx.agent as Agent
               const { provider, model, reasoningEffort } = child.options

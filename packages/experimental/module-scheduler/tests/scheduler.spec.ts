@@ -78,8 +78,13 @@ describe('module scheduler Cordis service', () => {
       agentOptions: { maxTokens: 100, provider: 'mock', model: 'luna' },
     }))
     const presentAs = vi.fn()
-    await start.mock.calls[0]?.[1].scopedSetup?.({ tools: { presentAs } } as unknown as Context)
+    const section = vi.fn()
+    await start.mock.calls[0]?.[1].scopedSetup?.({ tools: { presentAs }, systemPrompt: { section } } as unknown as Context)
     expect(presentAs).toHaveBeenCalledWith('native')
+    expect(section).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'module:minimal-system-prompt',
+      complete: true,
+    }))
     expect(JSON.stringify(start.mock.calls)).not.toContain('sol')
     await fiber.dispose()
   })
