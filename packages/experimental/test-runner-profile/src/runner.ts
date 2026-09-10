@@ -110,7 +110,7 @@ export function parseVitestOutput(rawOutput: string, exitCode: number): TestRunR
       file: filePart,
       testName,
       error: errorMsg,
-      line,
+      ...(line !== undefined ? { line } : {}),
     })
   }
 
@@ -127,7 +127,7 @@ export function parseVitestOutput(rawOutput: string, exitCode: number): TestRunR
     durationMs,
     failures,
     summary,
-    rawSnippet: !ok ? clean.slice(0, 1000) : undefined,
+    rawSnippet: !ok ? clean.slice(0, 1000) : '',
   }
 }
 

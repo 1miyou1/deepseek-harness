@@ -1,4 +1,4 @@
 name: independent-review-profile
 insert:
   - after: moduleScheduler
-    plugin: '@deepseek-ai/dsh-experimental-independent-review-profile'
+    plugin: '@deepseek-ai/dsh-experimental-independent-review-profile/module'
