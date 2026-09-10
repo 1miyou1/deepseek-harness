@@ -121,6 +121,24 @@ describe('module scheduler Cordis service', () => {
     })
     await fiber.dispose()
   })
+
+  it('publishes dynamic auto-delegation catalog to system prompt with registered modules', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    const fiber = await ctx.plugin(ModuleSchedulerService)
+
+    ctx.moduleScheduler.registry.register(reader())
+
+    const assembly = await ctx.systemPrompt.assemble({})
+    const catalogSection = assembly.sections.find(s => s.name === 'module-scheduler:catalog')
+    expect(catalogSection).toBeDefined()
+    expect(catalogSection?.text).toContain('专职模块自动调度规则')
+    expect(catalogSection?.text).toContain('reader@1.0.0')
+    expect(catalogSection?.text).toContain('读取输入数据')
+
+    await fiber.dispose()
+  })
 })
 
 describe('module scheduler contract', () => {

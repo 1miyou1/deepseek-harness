@@ -559,7 +559,7 @@ export function createModuleRunner(
  * Disposing the service cancels queued and active runs and rejects later calls as blocked.
  */
 export class ModuleSchedulerService extends TypertRemoteService {
-  static inject = ['tools']
+  static inject = ['tools', 'systemPrompt']
 
   /** Shared immutable module registry. */
   readonly registry: ModuleRegistry = new ModuleRegistry()
@@ -595,6 +595,24 @@ export class ModuleSchedulerService extends TypertRemoteService {
       },
       execute: async (args, exec) => await this.runFromTool(args.moduleRef, args.input, exec),
     }))
+    ctx.systemPrompt.section({
+      name: 'module-scheduler:catalog',
+      order: 2550,
+      text: () => {
+        const modules = this.registry.list()
+        if (modules.length === 0) return ''
+        const lines = [
+          '## 专职模块自动调度规则 (Dedicated Module Delegation)',
+          '当用户的任务意图匹配以下已注册专职模块时，必须优先使用 `module_run` 将任务委派给专职模块执行，禁止主代理自行执行多步繁重指令或手写脏活脚本：',
+          '',
+        ]
+        for (const m of modules) {
+          lines.push(`- \`${m.id}@${m.version}\` (${m.displayName})：${m.description}`)
+        }
+        lines.push('', '调用规范：直接调用 `module_run`，传入模块标识 `moduleRef` 与对应参数；模块执行完成后，依据模块返回的结构化结果向用户汇报。')
+        return lines.join('\n')
+      },
+    })
     ctx.effect(() => {
       return () => { this.coordinator.dispose() }
     }, 'module-scheduler: dispose runs')
