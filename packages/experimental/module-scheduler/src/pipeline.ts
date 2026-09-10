@@ -265,7 +265,7 @@ export const BUILTIN_PIPELINE_TEMPLATES: readonly PipelineTemplate[] = [
     id: 'code-review-flow',
     version: '1.0.0',
     displayName: '代码审查流水线',
-    description: '工作区变更与状态检查 (git-inspector) -> 源码与敏感红线静态安全审计 (code-auditor) 管道直通流水线。',
+    description: '工作区状态检查 (git-inspector) -> 源码与敏感红线静态审计 (code-auditor) -> 架构合规与伴随测试独立审查 (independent-review) 3步直通流水线。',
     pipeline: {
       nodes: [
         {
@@ -279,8 +279,14 @@ export const BUILTIN_PIPELINE_TEMPLATES: readonly PipelineTemplate[] = [
           dependsOn: ['inspect-git'],
           inputMap: { targetPath: '$input.targetPath' },
         },
+        {
+          id: 'independent-review',
+          moduleRef: 'independent-review@1.0.0',
+          dependsOn: ['audit-code'],
+          inputMap: { targetPath: '$input.targetPath' },
+        },
       ],
-      outputNode: 'audit-code',
+      outputNode: 'independent-review',
     },
   },
   {

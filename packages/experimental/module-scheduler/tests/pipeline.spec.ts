@@ -199,7 +199,7 @@ describe('module scheduler pipeline & DAG runner', () => {
     expect(templates.length).toBeGreaterThanOrEqual(2)
     const reviewTemplate = ctx.moduleScheduler.templates.get('code-review-flow@1.0.0')
     expect(reviewTemplate.id).toBe('code-review-flow')
-    expect(reviewTemplate.pipeline.nodes.length).toBe(2)
+    expect(reviewTemplate.pipeline.nodes.length).toBe(3)
 
     // Register dummy implementations for the template modules
     ctx.moduleScheduler.registry.register({
@@ -226,6 +226,18 @@ describe('module scheduler pipeline & DAG runner', () => {
       execute: async ({ input }) => ({ safe: true, auditedPath: (input as { targetPath: string }).targetPath }),
     })
 
+    ctx.moduleScheduler.registry.register({
+      id: 'independent-review',
+      version: '1.0.0',
+      displayName: '独立代码审查器',
+      description: '架构与测试完备度审查',
+      tools: [],
+      inputSchema: { type: 'object' },
+      outputSchema: { type: 'object' },
+      resourcePolicy: { maxConcurrent: 2, queueLimit: 2, timeoutMs: 2000 },
+      execute: async ({ input }) => ({ verdict: 'approved', score: 100, target: (input as { targetPath: string }).targetPath }),
+    })
+
     // Execute the template pipeline directly
     const handle = ctx.moduleScheduler.runPipeline({
       sessionId: 'test-session',
@@ -238,7 +250,8 @@ describe('module scheduler pipeline & DAG runner', () => {
     expect(result.status).toBe('succeeded')
     expect(result.nodes['inspect-git']?.status).toBe('succeeded')
     expect(result.nodes['audit-code']?.status).toBe('succeeded')
-    expect(result.output).toEqual({ safe: true, auditedPath: 'src/' })
+    expect(result.nodes['independent-review']?.status).toBe('succeeded')
+    expect(result.output).toEqual({ verdict: 'approved', score: 100, target: 'src/' })
 
     await fiber.dispose()
   })
