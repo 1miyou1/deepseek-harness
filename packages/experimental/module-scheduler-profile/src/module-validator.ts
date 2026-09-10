@@ -67,7 +67,10 @@ async function createValidationCopy(root: string, module: string): Promise<{ roo
     const copiedModule = resolve(tempRoot, relativeModule)
     await mkdir(resolve(copiedModule, '..'), { recursive: true })
     await cp(module, copiedModule, { recursive: true, dereference: false, filter: source => !relative(root, source).split(sep).includes('node_modules') })
-    await replicateWorkspaceLinks(resolve(module, 'node_modules'), resolve(copiedModule, 'node_modules'))
+    const sourceLinks = existsSync(resolve(module, 'node_modules'))
+      ? resolve(module, 'node_modules')
+      : resolve(root, 'packages/experimental/module-scheduler-profile/node_modules')
+    await replicateWorkspaceLinks(sourceLinks, resolve(copiedModule, 'node_modules'))
     // Reference entries point at sibling projects that do not exist inside the copy and make
     // oxc refuse the whole tsconfig; the copy resolves imports through the replicated links.
     const copiedConfig = resolve(copiedModule, 'tsconfig.json')
