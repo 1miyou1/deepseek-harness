@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
+import { existsSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ModuleDefinition, ModuleExecutionContext } from '@deepseek-ai/dsh-experimental-module-scheduler'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
@@ -17,7 +18,12 @@ export function apply(ctx: Context): void {
   const currentDir = typeof __dirname !== 'undefined'
     ? __dirname
     : dirname(fileURLToPath(import.meta.url))
-  const scriptPath = resolve(currentDir, 'scripts/transcribe.py')
+  // package.json declares the script under src/scripts/*, so a build never emits
+  // lib/scripts/. From src/ (dev) the sibling lookup hits; from lib/ (built) it must
+  // fall back to the package's src/scripts/, otherwise spawn fails on a missing cwd.
+  const scriptPath = existsSync(resolve(currentDir, 'scripts/transcribe.py'))
+    ? resolve(currentDir, 'scripts/transcribe.py')
+    : resolve(currentDir, '../src/scripts/transcribe.py')
 
   const definition: ModuleDefinition = {
     id: 'video-analyzer',
