@@ -78,7 +78,8 @@ export type ModuleTool = (args: unknown) => Promise<unknown>
 export interface ManagedModuleAgentRequest {
   task: string
   tools: readonly string[]
-  outputSchema: ModuleSchema
+  /** Optional strict result schema. Omit it for a plain-text task report. */
+  outputSchema?: ModuleSchema
   maxSteps: number
   maxTokensPerStep: number
   /** Optional exact non-Sol route for bounded module work. */
@@ -186,6 +187,8 @@ export interface ModuleSchedulerConfig extends Partial<ModulePolicy> {
   maxRecentRuns?: number
   /** Exact model routes installed only in module-managed child Agents. */
   agentStepModelRoutes?: TierRoutes
+  /** Exact route used only by plain-text managed tasks. */
+  freeformAgentRoute?: TierRoutes['luna']
   /** Subagent provider used only for module-managed child Agents. */
   managedAgentProvider?: string
 }
@@ -208,6 +211,32 @@ export type HostTool = (args: unknown, context: HostToolContext) => Promise<unkn
 
 /** Trusted factory that projects one private module tool into a child-only ToolRuntime definition. */
 export type ManagedAgentToolFactory = (execute: ModuleTool) => ToolDefinition
+
+export interface VerifiedAgentOptions<Value, Validation> {
+  task: string
+  run: (task: string) => Promise<Value>
+  validate: (value: Value) => Promise<Validation>
+  retryTask: (result: { value: Value; validation: Validation }) => string | undefined
+}
+
+export interface VerifiedAgentResult<Value, Validation> {
+  value: Value
+  validation: Validation
+  attempts: 1 | 2
+}
+
+/** Run one Agent attempt and at most one host-requested repair attempt. */
+export async function runVerifiedAgent<Value, Validation>(
+  options: VerifiedAgentOptions<Value, Validation>,
+): Promise<VerifiedAgentResult<Value, Validation>> {
+  let value = await options.run(options.task)
+  let validation = await options.validate(value)
+  const retryTask = options.retryTask({ value, validation })
+  if (retryTask === undefined) return { value, validation, attempts: 1 }
+  value = await options.run(retryTask)
+  validation = await options.validate(value)
+  return { value, validation, attempts: 2 }
+}
 
 const terminal = new Set<ModuleStatus>(['succeeded', 'failed', 'blocked', 'cancelled', 'timed_out'])
 
@@ -597,12 +626,14 @@ export class ModuleSchedulerService extends TypertRemoteService {
   private readonly managedAgentTools = new Map<string, ManagedAgentToolFactory>()
   private readonly maxRecentRuns: number
   private readonly agentStepModelRoutes: TierRoutes | undefined
+  private readonly freeformAgentRoute: TierRoutes['luna'] | undefined
   private readonly managedAgentProvider: string
 
   constructor(ctx: Context, config: ModuleSchedulerConfig = {}) {
     super(ctx, 'moduleScheduler')
-    const { maxRecentRuns = 50, agentStepModelRoutes, managedAgentProvider = 'spawn', ...limits } = config
+    const { maxRecentRuns = 50, agentStepModelRoutes, freeformAgentRoute, managedAgentProvider = 'spawn', ...limits } = config
     this.agentStepModelRoutes = agentStepModelRoutes
+    this.freeformAgentRoute = freeformAgentRoute
     if (managedAgentProvider === '') throw new Error('invalid-managed-agent-provider')
     this.managedAgentProvider = managedAgentProvider
     if (!Number.isSafeInteger(maxRecentRuns) || maxRecentRuns < 0) throw new Error('invalid-run-history-limit')
@@ -811,9 +842,11 @@ export class ModuleSchedulerService extends TypertRemoteService {
           if (execute === undefined || factory === undefined) throw new Error(`managed-agent-tool-unavailable:${name}`)
           return factory(execute)
         })
-        const requestedRoute = request.modelTier === undefined
-          ? undefined
-          : this.agentStepModelRoutes?.[request.modelTier]
+        const requestedRoute = request.outputSchema === undefined && this.freeformAgentRoute !== undefined
+          ? this.freeformAgentRoute
+          : request.modelTier === undefined
+            ? undefined
+            : this.agentStepModelRoutes?.[request.modelTier]
         if (request.modelTier !== undefined && requestedRoute === undefined) {
           throw new Error(`managed-agent-route-unavailable:${request.modelTier}`)
         }
@@ -825,19 +858,21 @@ export class ModuleSchedulerService extends TypertRemoteService {
             parent: agent,
             signal,
             agentOptions: { maxTokens: request.maxTokensPerStep, ...requestedRoute },
-            outputSchema: request.outputSchema as ObjectJsonSchema,
+            ...request.outputSchema === undefined ? {} : { outputSchema: request.outputSchema as ObjectJsonSchema },
             toolFilter: { allow: [] },
             scopedTools,
-            scopedSetup: async (childCtx: Context) => {
+            scopedSetup: async (childCtx: Context, unpublished?: Agent) => {
               childCtx.tools.presentAs('native')
               childCtx.systemPrompt.section({
                 name: 'module:minimal-system-prompt',
                 order: 0,
                 complete: true,
-                text: 'You are a dedicated, single-purpose module agent. Execute the requested task using ONLY the declared scoped tools. Return structured output strictly matching the output schema without extraneous conversational prose.',
+                text: request.outputSchema === undefined
+                  ? 'You are a dedicated, single-purpose module agent. Complete the requested goal using ONLY the declared scoped tools. Return a concise plain-text completion report grounded in tool evidence. Do not claim checks you did not run.'
+                  : 'You are a dedicated, single-purpose module agent. Execute the requested task using ONLY the declared scoped tools. Return structured output strictly matching the output schema without extraneous conversational prose.',
               })
-              if (this.agentStepModelRoutes === undefined || request.modelTier !== undefined) return
-              const child = childCtx.agent as Agent
+              if (this.agentStepModelRoutes === undefined || requestedRoute !== undefined) return
+              const child = unpublished ?? (childCtx.agent as Agent)
               const { provider, model, reasoningEffort } = child.options
               installModelSelection(child.ctx, {
                 current: provider === undefined || model === undefined ? undefined : {
@@ -855,8 +890,20 @@ export class ModuleSchedulerService extends TypertRemoteService {
           if (result.stopReason !== 'completed') {
             throw new Error(`managed-agent-${result.stopReason}${result.diagnostic === undefined ? '' : `; diagnostic: ${result.diagnostic}`}`)
           }
-          if (result.structured === undefined) throw new Error('managed-agent-structured-output-missing')
-          return result.structured
+          if (request.outputSchema !== undefined) {
+            if (result.structured === undefined) throw new Error('managed-agent-structured-output-missing')
+            return result.structured
+          }
+          const text = result.output
+            .map(part => part.type === 'text' ? part.text : '')
+            .filter(Boolean)
+            .join('\n')
+          if (text === '') throw new Error('managed-agent-text-output-missing')
+          const providerError = text.match(
+            /^\[req_[^\]\r\n]+\] \[[^\]\r\n]+\]\r?\n\*\*((?:Request exceeded|Rate limit|Provider unavailable)[^*]*)\*\*/i,
+          )
+          if (providerError !== null) throw new Error(`managed-agent-provider-error; diagnostic: ${providerError[1]}`)
+          return text
         } finally {
           await run?.dispose()
         }
@@ -883,7 +930,10 @@ export class ModuleSchedulerService extends TypertRemoteService {
     if (exec.signal.aborted) cancel()
     else exec.signal.addEventListener('abort', cancel, { once: true })
     try {
-      return structuredClone(await handle) as unknown as JsonValue
+      // Tool output must be lossless JSON. structuredClone preserves properties whose
+      // value is undefined (an absent outputNode result, for example), and JSON cannot
+      // represent those, so the whole pipeline result was rejected at the tool boundary.
+      return JSON.parse(JSON.stringify(await handle)) as JsonValue
     } finally {
       exec.signal.removeEventListener('abort', cancel)
     }
