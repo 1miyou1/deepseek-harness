@@ -161,7 +161,7 @@ export interface SubagentStartRequest {
   /** Trusted Host-only tools registered in this one-shot child's own scope. */
   readonly scopedTools?: readonly ToolDefinition[]
   /** Trusted Host-only composition applied in this one-shot child's own scope before its first step. */
-  readonly scopedSetup?: (ctx: Context) => void | Promise<void>
+  readonly scopedSetup?: (ctx: Context, child?: Agent) => void | Promise<void>
   /** Maximum model steps in this one-shot child. */
   readonly maxSteps?: number
 }

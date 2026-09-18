@@ -75,7 +75,7 @@ async function setup(script: Script, options: SetupOptions = {}) {
     name: 'spawn',
     capabilities: {
       agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: false,
-      persona: false, scopedTools: true, stepLimit: true,
+      persona: false, scopedTools: true, scopedSetup: true, stepLimit: true,
     },
     inheritsParentContext: false,
     start: (request: ResolvedSubagentStartRequest) => startInProcessRun(request, {}),
@@ -144,6 +144,31 @@ describe('in-process structured output', () => {
     expect(adapter.requests.every(request => toolNames(request).includes('private_read'))).toBe(true)
     await run.dispose()
     expect(ctx.tools.schemas().map(tool => tool.name)).not.toContain('private_read')
+  })
+
+  it('runs the trusted scoped setup inside the child creation window', async () => {
+    const { ctx, parent } = await setup([
+      toolCallResponse('c1', STRUCTURED_OUTPUT_TOOL, { answer: 5 }),
+    ])
+    let ranBeforeFirstStep = false
+    const surfaces: string[] = []
+    const run = await ctx.subagents.start('spawn', structuredRequest(parent, {
+      scopedSetup: (childCtx) => {
+        surfaces.push(typeof childCtx.tools.register)
+        childCtx.systemPrompt.section({
+          name: 'probe:scoped-setup',
+          order: 0,
+          text: 'scoped setup probe',
+        })
+        ranBeforeFirstStep = true
+      },
+    }))
+    expect(ranBeforeFirstStep).toBe(true)
+    const result = await run.result
+    expect(result.stopReason).toBe('completed')
+    expect(result.structured).toEqual({ answer: 5 })
+    expect(surfaces).toEqual(['function'])
+    await run.dispose()
   })
 
   it('stops the turn after a successful capture — no extra model step is spent', async () => {

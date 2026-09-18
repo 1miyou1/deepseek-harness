@@ -121,14 +121,16 @@ export async function startInProcessRun(
 
   let structured: StructuredAttachment | undefined
   const stepLimit = { reached: false }
-  const setup = async (childCtx: Context): Promise<void> => {
-    appendDelegatedPolicyOverrides((childCtx.agent as Agent).session, inherited)
+  const setup = async (childCtx: Context, child?: Agent): Promise<void> => {
+    // The agent factory hands the unpublished child to setup as its second
+    // argument; the context itself carries it only on older factories.
+    appendDelegatedPolicyOverrides((child ?? (childCtx.agent as Agent)).session, inherited)
     applyChildComposition(childCtx, parent, {
       persona: request.persona,
       toolFilter: request.toolFilter,
     })
     for (const tool of request.scopedTools ?? []) childCtx.tools.register(tool)
-    await request.scopedSetup?.(childCtx)
+    await request.scopedSetup?.(childCtx, child)
     const maxSteps = request.maxSteps
     if (maxSteps !== undefined) {
       let entered = 0
@@ -151,6 +153,7 @@ export async function startInProcessRun(
 
   const handle = await parent.ctx.agents.create({
     sessionId: childId,
+    parentAgent: parent,
     meta: childSessionMeta(parent, childDepth, seed !== undefined),
     ...seed !== undefined ? { seed } : {},
     ...seed === undefined ? {} : { inheritedEventCount: activationBoundary },

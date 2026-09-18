@@ -57,8 +57,15 @@ export interface AgentSetupCommit {
  * @param agentCtx - unpublished Agent scope.
  * @returns an optional synchronous commit invoked after setup awaits settle and immediately before publication.
  */
+/**
+ * Creation-time setup for one agent. The factory mints `agentCtx` before the
+ * session or agent is published, and hands over the same unpublished child as
+ * `agent` when it can, because `agentCtx.agent` stays unresolvable for the
+ * length of that window.
+ */
 export type AgentSetup = (
   agentCtx: Context,
+  agent?: Agent,
 ) => AgentSetupCommit | Promise<AgentSetupCommit | void> | void
 
 /**
@@ -71,6 +78,8 @@ export type AgentSetup = (
 export interface CreateAgentOptions {
   /** The live agent/session identity. */
   readonly sessionId: SessionId
+  /** Live parent Agent for runtime ownership; omit for a root Agent. */
+  readonly parentAgent?: Agent
   /**
    * Session creation metadata: validated absolute `cwd`, `parentSession`
    * fork lineage, the `isSeeded` fork marker, the coarse `origin`
