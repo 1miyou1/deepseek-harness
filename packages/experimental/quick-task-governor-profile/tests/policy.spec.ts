@@ -46,5 +46,6 @@ describe('quick task policy', () => {
     expect(evaluateQuickToolCall(state(), 'pipeline_template_run', { templateRef: 'code-review-flow@1.0.0' }).allowed).toBe(true)
     expect(evaluateQuickToolCall(state(), 'pipeline_template_run', { templateRef: 'full-cycle-dev-flow@1.0.0' }).allowed).toBe(false)
     expect(evaluateQuickToolCall(state(), 'module_run', { moduleRef: 'document-organizer@1.0.0' }).allowed).toBe(false)
+    expect(evaluateQuickToolCall(state(), 'module_run', { moduleRef: 'fast-vision@1.0.0' }).allowed).toBe(true)
   })
 })

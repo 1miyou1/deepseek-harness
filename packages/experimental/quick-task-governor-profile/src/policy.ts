@@ -20,6 +20,10 @@ const ALLOWED_MODULES = new Set([
   'git-inspector@1.0.0',
   'code-auditor@1.0.0',
   'independent-review@1.0.0',
+  'fast-vision@1.0.0',
+  'local-vision@1.0.0',
+  'image-gallery@1.0.0',
+  'video-vision@1.0.0',
 ])
 
 function normalizePath(path: string): string {
