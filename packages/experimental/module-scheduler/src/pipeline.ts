@@ -271,7 +271,7 @@ export const BUILTIN_PIPELINE_TEMPLATES: readonly PipelineTemplate[] = [
         {
           id: 'inspect-git',
           moduleRef: 'git-inspector@1.0.0',
-          inputMap: { targetPath: '$input.targetPath' },
+          inputMap: { path: '$input.targetPath' },
         },
         {
           id: 'audit-code',

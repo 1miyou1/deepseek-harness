@@ -200,6 +200,7 @@ describe('module scheduler pipeline & DAG runner', () => {
     const reviewTemplate = ctx.moduleScheduler.templates.get('code-review-flow@1.0.0')
     expect(reviewTemplate.id).toBe('code-review-flow')
     expect(reviewTemplate.pipeline.nodes.length).toBe(3)
+    expect(reviewTemplate.pipeline.nodes[0]?.inputMap).toEqual({ path: '$input.targetPath' })
 
     // Register dummy implementations for the template modules
     ctx.moduleScheduler.registry.register({
@@ -211,7 +212,7 @@ describe('module scheduler pipeline & DAG runner', () => {
       inputSchema: { type: 'object' },
       outputSchema: { type: 'object' },
       resourcePolicy: { maxConcurrent: 2, queueLimit: 2, timeoutMs: 2000 },
-      execute: async ({ input }) => ({ branch: 'feat/test', path: (input as { targetPath: string }).targetPath }),
+      execute: async ({ input }) => ({ branch: 'feat/test', path: (input as { path: string }).path }),
     })
 
     ctx.moduleScheduler.registry.register({
@@ -248,7 +249,10 @@ describe('module scheduler pipeline & DAG runner', () => {
 
     const result = await handle
     expect(result.status).toBe('succeeded')
-    expect(result.nodes['inspect-git']?.status).toBe('succeeded')
+    expect(result.nodes['inspect-git']).toMatchObject({
+      status: 'succeeded',
+      output: { branch: 'feat/test', path: 'src/' },
+    })
     expect(result.nodes['audit-code']?.status).toBe('succeeded')
     expect(result.nodes['independent-review']?.status).toBe('succeeded')
     expect(result.output).toEqual({ verdict: 'approved', score: 100, target: 'src/' })
