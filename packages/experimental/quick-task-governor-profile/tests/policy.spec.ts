@@ -25,6 +25,15 @@ describe('quick task policy', () => {
   it('denies undeclared paths, excess files, and excess repair attempts', () => {
     expect(evaluateQuickToolCall(state(), 'module_run', { moduleRef: 'code-implementer@1.0.0',
       input: { writePaths: ['test/a.ts'] } }).allowed).toBe(false)
+    expect(evaluateQuickToolCall(state({ allowedPaths: ['packages/foo/src/a.ts'] }), 'module_run', {
+      moduleRef: 'code-implementer@1.0.0', input: { cwd: 'packages/foo', writePaths: ['src/a.ts'] },
+    }).allowed).toBe(true)
+    expect(evaluateQuickToolCall(state({ allowedPaths: ['packages/foo/src/a.ts'] }), 'module_run', {
+      moduleRef: 'code-implementer@1.0.0', input: { cwd: 'packages/bar', writePaths: ['src/a.ts'] },
+    }).allowed).toBe(false)
+    expect(evaluateQuickToolCall(state({ allowedPaths: ['packages/foo/src/a.ts'] }), 'module_run', {
+      moduleRef: 'code-implementer@1.0.0', input: { cwd: 'packages/bar', writePaths: ['src/a.ts'] },
+    }).allowed).toBe(false)
     expect(evaluateQuickToolCall(state(), 'module_run', { moduleRef: 'code-implementer@1.0.0',
       input: { writePaths: ['src/a.ts', 'src/lib/a.ts', 'src/lib/b.ts', 'src/lib/c.ts'] } }).allowed).toBe(false)
     expect(evaluateQuickToolCall(state({ implementAttempts: 2 }), 'module_run', { moduleRef: 'code-implementer@1.0.0',

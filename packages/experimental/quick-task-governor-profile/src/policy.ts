@@ -79,11 +79,15 @@ export function evaluateQuickToolCall(
     return { allowed: false, reason: 'quick_task_repair-budget-exhausted: at most two implementation attempts are allowed' }
   }
   const input = args.input !== null && typeof args.input === 'object' ? args.input as Record<string, unknown> : {}
-  const writePaths = Array.isArray(input.writePaths) ? input.writePaths.filter((path): path is string => typeof path === 'string') : []
+  const cwd = typeof input.cwd === 'string' ? input.cwd.trim() : ''
+  const cwdPrefix = cwd !== '' && cwd !== '.' && !cwd.startsWith('/') && !cwd.includes(':\\') ? cwd + '/' : ''
+  const writePaths = Array.isArray(input.writePaths)
+    ? input.writePaths.filter((p): p is string => typeof p === 'string').map(p => normalizePath(cwdPrefix + p))
+    : []
   if (writePaths.length === 0 || writePaths.length > 3) {
     return { allowed: false, reason: 'quick_task_write-scope-invalid: writePaths must contain between one and three paths' }
   }
-  const cumulativePaths = new Set([...state.leasedPaths, ...writePaths.map(normalizePath)])
+  const cumulativePaths = new Set([...state.leasedPaths, ...writePaths])
   if (cumulativePaths.size > 3) {
     return { allowed: false, reason: 'quick_task_cumulative-scope-denied: the task may touch at most three paths in total' }
   }
