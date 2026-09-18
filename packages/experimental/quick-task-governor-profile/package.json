@@ -1,0 +1,21 @@
+{
+  "name": "@deepseek-ai/dsh-experimental-quick-task-governor-profile",
+  "description": "Runtime guardrails for bounded Flash-controlled quick tasks",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": { ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" }, "./package.json": "./package.json" },
+  "files": ["lib/index.js", "lib/types/**/*.d.ts"],
+  "license": "MIT",
+  "dependencies": { "@deepseek-ai/dsh-llm": "workspace:^" },
+  "peerDependencies": { "@deepseek-ai/cordis": "workspace:^" },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

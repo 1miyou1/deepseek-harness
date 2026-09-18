@@ -302,6 +302,7 @@
     { "path": "./packages/experimental/android-environment-diagnostics-profile" },
     { "path": "./packages/experimental/module-scheduler-profile" },
     { "path": "./packages/experimental/web-reader-profile" },
+    { "path": "./packages/experimental/quick-task-governor-profile" },
     { "path": "./packages/experimental/git-inspector-profile" },
     { "path": "./packages/experimental/code-auditor-profile" },
     { "path": "./packages/experimental/video-analyzer-profile" },
