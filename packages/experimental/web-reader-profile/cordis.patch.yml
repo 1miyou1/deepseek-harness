@@ -1,0 +1,3 @@
+- insert:
+    - id: web-reader
+      name: '@deepseek-ai/dsh-experimental-web-reader-profile/module'

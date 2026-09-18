@@ -29,7 +29,7 @@ function plan(overrides: Record<string, unknown> = {}) {
 }
 
 describe('document organizer module', () => {
-  it('uses Luna and applies compare-before-write updates', async () => {
+  it('routes the first pass dynamically and applies compare-before-write updates', async () => {
     const root = workspace()
     const run = vi.fn().mockResolvedValue(plan({
       writes: [{ path: 'content/a.md', expectedContent: '# A\n', content: '# A\n\n整理后。\n' }],
@@ -38,9 +38,9 @@ describe('document organizer module', () => {
 
     const result = await definition.execute(context({ files: ['content/a.md'], task: '整理文档' }, { run }))
 
-    expect(run).toHaveBeenCalledWith(expect.objectContaining({ modelTier: 'luna' }))
+    expect((run.mock.calls[0]?.[0] as { modelTier?: string }).modelTier).toBeUndefined()
     expect(readFileSync(join(root, 'content/a.md'), 'utf8')).toBe('# A\n\n整理后。\n')
-    expect(result).toMatchObject({ ok: true, route: 'luna', fallback: false, changedFiles: ['content/a.md'] })
+    expect(result).toMatchObject({ ok: true, route: 'dynamic', fallback: false, changedFiles: ['content/a.md'] })
   })
 
   it('does not apply a plan that arrives after cancellation', async () => {
@@ -71,7 +71,7 @@ describe('document organizer module', () => {
     const result = await definition.execute(context({ files: ['content/a.md'], task: '分类' }, { run }))
 
     const tiers = run.mock.calls.map(([request]) => (request as { modelTier?: string }).modelTier)
-    expect(tiers).toEqual(['luna', 'terra'])
+    expect(tiers).toEqual([undefined, 'terra'])
     expect(tiers).not.toContain('sol')
     expect(result).toMatchObject({ ok: true, route: 'terra', fallback: true })
   })
@@ -86,7 +86,7 @@ describe('document organizer module', () => {
     const result = await definition.execute(context({ files: ['content/a.md'], task: '分类' }, { run }))
 
     const tiers = run.mock.calls.map(([request]) => (request as { modelTier?: string }).modelTier)
-    expect(tiers).toEqual(['luna', 'terra'])
+    expect(tiers).toEqual([undefined, 'terra'])
     expect(result).toMatchObject({ ok: true, route: 'terra', fallback: true })
   })
 
@@ -217,7 +217,7 @@ describe('document organizer module', () => {
       run: vi.fn().mockResolvedValue(plan()),
     }))
 
-    expect(result).toMatchObject({ ok: true, route: 'luna' })
+    expect(result).toMatchObject({ ok: true, route: 'dynamic' })
     expect(spawned.map(argv => argv.at(-1))).toEqual([
       join(root, 'scripts/verify-agent-note-format.ts'),
       join(root, 'scripts/verify-translation-pairing.ts'),

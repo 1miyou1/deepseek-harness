@@ -85,12 +85,11 @@ class ManagedDeveloperAdapter extends LlmAdapter {
                 : this.turn === 7
                   ? toolResponse('typecheck-module', 'module_dev_typecheck', { id: 'example' })
                   : this.turn === 8
-                    ? toolResponse('complete-module', 'structured_output', {
-                      ok: true,
-                      changedFiles: ['src/module.ts'],
-                      checks: [{ name: 'test', ok: true }, { name: 'lint', ok: true }, { name: 'typecheck', ok: true }],
-                      summary: '已完成修改并通过验证',
-                    })
+                    ? [
+                      { type: 'block-start', index: 0, blockType: 'text' },
+                      { type: 'block-end', index: 0, block: { type: 'text', text: '已完成修改并通过验证' } },
+                      { type: 'finish', reason: { kind: 'stop' } },
+                    ] as StreamChunk[]
                     : [
                       { type: 'block-start', index: 0, blockType: 'text' },
                       { type: 'block-end', index: 0, block: { type: 'text', text: '开发完成' } },
@@ -162,7 +161,7 @@ describe('module developer model loop composition', () => {
     expect(childRequests.every(request => request.provider === 'mock' && request.model === 'mock')).toBe(true)
     expect(childRequests.every(request => request.maxTokens === 4096)).toBe(true)
     expect(childRequests[0]?.tools?.map(tool => tool.name).sort()).toEqual([
-      'module_dev_lint', 'module_dev_read', 'module_dev_test', 'module_dev_typecheck', 'module_dev_write', 'structured_output',
+      'module_dev_lint', 'module_dev_read', 'module_dev_test', 'module_dev_typecheck', 'module_dev_write',
     ])
     expect(adapter.requests[0]?.tools?.map(tool => tool.name)).not.toContain('module_dev_read')
     expect(adapter.requests[1]?.tools?.map(tool => tool.name)).not.toContain('module_run')
@@ -170,7 +169,7 @@ describe('module developer model loop composition', () => {
     if (result?.type !== 'tool-result' || result.content[0]?.type !== 'text') throw new Error('missing-managed-developer-result')
     expect(JSON.parse(result.content[0].text)).toMatchObject({
       moduleRef: 'module-developer@2.0.0', status: 'succeeded', validated: true,
-      output: { ok: true, changedFiles: ['src/module.ts'] },
+      output: { ok: true, changedFiles: ['src/module.ts'], summary: '已完成修改并通过验证' },
     })
   })
 

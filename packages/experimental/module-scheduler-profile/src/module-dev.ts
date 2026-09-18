@@ -1,11 +1,13 @@
 /** Private Host tools for safely editing and validating one experimental module. */
 
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { lstat, open, readFile, realpath } from 'node:fs/promises'
-import { dirname, isAbsolute, relative, resolve } from 'node:path'
+import { lstat, mkdtemp, open, readFile, readdir, realpath, rm } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
-import type { HostTool, HostToolContext, ManagedAgentToolFactory, ModuleDefinition, ModuleTool } from '@deepseek-ai/dsh-experimental-module-scheduler'
+import { runVerifiedAgent, type HostTool, type HostToolContext, type ManagedAgentToolFactory, type ModuleDefinition, type ModuleTool } from '@deepseek-ai/dsh-experimental-module-scheduler'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 interface ValidationRuntime {
@@ -16,6 +18,7 @@ interface ValidationRuntime {
     stdio: { stdin: 'ignore'; stdout: { maxBytes: number }; stderr: { maxBytes: number } }
     graceMs: number
     signal: AbortSignal
+    env?: Record<string, string>
   }): {
     collected: { stdout?: { readFrom(offset: number): { text: string } }; stderr?: { readFrom(offset: number): { text: string } } }
     done: Promise<{ exitCode: number | null }>
@@ -78,8 +81,12 @@ async function moduleTarget(root: string, id: string): Promise<ModuleTarget> {
   return { id, path: actualPath }
 }
 
+function isSensitiveFile(file: string): boolean {
+  return /(?:^|[\\/])(?:\.env|.*(?:secret|token|credential|key).*)$/iu.test(file)
+}
+
 async function existingFile(root: string, id: string, file: string): Promise<string> {
-  if (/(?:^|[\\/])(?:\.env|.*(?:secret|token|credential|key).*)$/iu.test(file)) throw new Error('sensitive-file-forbidden')
+  if (isSensitiveFile(file)) throw new Error('sensitive-file-forbidden')
   if (isAbsolute(file) || file.split(/[\\/]/u).some(part => part === '..' || part.startsWith('.'))) throw new Error('file-path-outside-module')
   const module = await moduleTarget(root, id)
   const path = await realpath(resolve(module.path, file)).catch(() => undefined)
@@ -160,14 +167,21 @@ async function validate(root: string, id: string, action: 'test' | 'lint' | 'typ
     : action === 'lint'
       ? [process.execPath, resolve(root, 'scripts/run-oxlint.ts'), `packages/experimental/${id}-profile`]
       : [process.execPath, resolve(root, 'node_modules/typescript/bin/tsc'), '-p', resolve(module.path, 'tsconfig.json'), '--noEmit', '--composite', 'false', '--incremental', 'false']
+  let scratch: string | undefined
   try {
-    const confined = runtime.sandbox.confine(argv, { mode: 'read-only', workspaceRoot: module.path, sessionId })
+    scratch = action === 'test' ? await mkdtemp(join(tmpdir(), 'dsh-module-dev-test-')) : undefined
+    const confined = runtime.sandbox.confine(argv, {
+      mode: scratch === undefined ? 'read-only' : 'workspace-write',
+      workspaceRoot: scratch ?? module.path,
+      sessionId,
+    })
     const handle = runtime.subprocess.spawn({
       argv: confined.argv,
       cwd: root,
       stdio: { stdin: 'ignore', stdout: { maxBytes: 4000 }, stderr: { maxBytes: 4000 } },
       graceMs: 1000,
       signal,
+      ...action === 'test' ? { env: { MODULE_DEV_RESTRICTED_VALIDATION: '1' } } : {},
     })
     const outcome = await handle.done
     const stdout = handle.collected.stdout?.readFrom(0).text ?? ''
@@ -175,7 +189,36 @@ async function validate(root: string, id: string, action: 'test' | 'lint' | 'typ
     return { action, ok: outcome.exitCode === 0, code: outcome.exitCode, output: `${stdout}${stderr}`.slice(-4000) }
   } catch (error) {
     return { action, ok: false, code: 'failed', output: String(error).slice(-4000) }
+  } finally {
+    if (scratch !== undefined) await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
   }
+}
+
+interface ModuleFileSnapshot { hash: string; content: Buffer }
+
+async function snapshotModuleFiles(modulePath: string): Promise<Map<string, ModuleFileSnapshot>> {
+  const snapshot = new Map<string, ModuleFileSnapshot>()
+  const walk = async (directory: string): Promise<void> => {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (entry.name === 'node_modules') continue
+      const absolute = resolve(directory, entry.name)
+      if (entry.isDirectory()) await walk(absolute)
+      else if (entry.isFile()) {
+        const file = relative(modulePath, absolute).replaceAll('\\', '/')
+        if (isSensitiveFile(file)) continue
+        const content = await readFile(absolute)
+        snapshot.set(file, { hash: createHash('sha256').update(content).digest('hex'), content })
+      }
+    }
+  }
+  await walk(modulePath)
+  return snapshot
+}
+
+function changedFiles(before: ReadonlyMap<string, ModuleFileSnapshot>, after: ReadonlyMap<string, ModuleFileSnapshot>): string[] {
+  return [...new Set([...before.keys(), ...after.keys()])]
+    .filter(file => before.get(file)?.hash !== after.get(file)?.hash)
+    .sort()
 }
 
 export const moduleDevToolFactories: ReadonlyMap<string, ManagedAgentToolFactory> = new Map([
@@ -215,6 +258,7 @@ export function createModuleDevHostTools(
   runtime?: ValidationRuntime,
 ): ReadonlyMap<string, HostTool> {
   const rootFor = (context: HostToolContext) => typeof root === 'string' ? root : root(context)
+  const snapshots = new Map<string, { id: string; modulePath: string; files: Map<string, ModuleFileSnapshot> }>()
   return new Map<string, HostTool>([
     ['module-dev/create', async (args, context) => {
       assertBuilder(context)
@@ -248,6 +292,37 @@ export function createModuleDevHostTools(
         file: input.file,
         bytes: await replaceExistingFile(rootFor(context), input.id, input.file, input.expectedContent, input.content),
       }
+    }],
+    ['module-dev/changes', async (args, context) => {
+      assertDeveloper(args, context)
+      const input = args as { id: string; action: 'begin' | 'end' | 'rollback' | 'discard'; token?: string }
+      if (input.action === 'begin') {
+        const module = await moduleTarget(rootFor(context), input.id)
+        const token = randomUUID()
+        snapshots.set(token, { id: input.id, modulePath: module.path, files: await snapshotModuleFiles(module.path) })
+        return { token }
+      }
+      if (input.token === undefined) throw new Error('module-dev-change-token-required')
+      const baseline = snapshots.get(input.token)
+      if (baseline === undefined || baseline.id !== input.id) throw new Error('module-dev-change-token-invalid')
+      if (input.action === 'discard') {
+        snapshots.delete(input.token)
+        return { changedFiles: [] }
+      }
+      const module = await moduleTarget(rootFor(context), input.id)
+      if (module.path !== baseline.modulePath) throw new Error('module-dev-change-root-mismatch')
+      const current = await snapshotModuleFiles(module.path)
+      const files = changedFiles(baseline.files, current)
+      if (input.action === 'rollback') {
+        for (const file of files) {
+          const before = baseline.files.get(file)
+          const after = current.get(file)
+          if (before === undefined || after === undefined) throw new Error('module-dev-rollback-file-set-changed')
+          await replaceExistingFile(rootFor(context), input.id, file, after.content.toString('utf8'), before.content.toString('utf8'))
+        }
+      }
+      snapshots.delete(input.token)
+      return { changedFiles: files }
     }],
     ...(['test', 'lint', 'typecheck'] as const).map((action): [string, HostTool] => [
       `module-dev/${action}`,
@@ -368,16 +443,19 @@ export function applyModule(ctx: Context): void {
     version: '2.0.0',
     displayName: '受管模块开发助手',
     description: '由继承当前模型的受管子代理在受限模块目录中多步修改并验证实验性模块',
-    tools: ['module-dev/read', 'module-dev/write', 'module-dev/test', 'module-dev/lint', 'module-dev/typecheck'],
+    tools: ['module-dev/read', 'module-dev/write', 'module-dev/test', 'module-dev/lint', 'module-dev/typecheck', 'module-dev/changes'],
     inputSchema: {
       type: 'object', required: ['id', 'task'], additionalProperties: false,
       properties: { id: { type: 'string' }, task: { type: 'string' } },
     },
     outputSchema: {
-      type: 'object', required: ['ok', 'changedFiles', 'checks', 'summary'], additionalProperties: false,
+      type: 'object', required: ['ok', 'changedFiles', 'attempts', 'repaired', 'rolledBack', 'checks', 'summary'], additionalProperties: false,
       properties: {
         ok: { type: 'boolean' },
         changedFiles: { type: 'array', items: { type: 'string' } },
+        attempts: { type: 'number' },
+        repaired: { type: 'boolean' },
+        rolledBack: { type: 'boolean' },
         checks: { type: 'array', items: {
           type: 'object', required: ['name', 'ok'], additionalProperties: false,
           properties: { name: { type: 'string' }, ok: { type: 'boolean' } },
@@ -385,18 +463,62 @@ export function applyModule(ctx: Context): void {
         summary: { type: 'string' },
       },
     },
-    resourcePolicy: definition.resourcePolicy,
+    resourcePolicy: { maxConcurrent: 1, queueLimit: 1, timeoutMs: 300_000 },
     requiresAgent: true,
-    execute: async ({ input, agent }) => {
+    execute: async ({ input, agent, tools }) => {
       if (agent === undefined) throw new Error('module-requires-agent')
       const request = input as { id: string; task: string }
-      return agent.run({
-        task: `目标模块 ID：${request.id}\n任务：${request.task}\n只能操作该模块中的已有文件。完成前必须运行 test、lint、typecheck，并通过 structured_output 返回结果。`,
-        tools: definition.tools,
-        outputSchema: managedDefinition.outputSchema,
-        maxSteps: 12,
-        maxTokensPerStep: 4096,
-      })
+      const tracker = tools.get('module-dev/changes')
+      if (tracker === undefined) throw new Error('module-dev-change-tracker-unavailable')
+      const started = await tracker({ id: request.id, action: 'begin' }) as { token?: unknown }
+      if (typeof started.token !== 'string') throw new Error('module-dev-change-token-missing')
+      try {
+        const runAgent = (task: string) => agent.run({
+          task,
+          tools: definition.tools,
+          maxSteps: 12,
+          maxTokensPerStep: 4096,
+        })
+        const runChecks = async () => {
+          const actions = ['test', 'lint', 'typecheck'] as const
+          const results = await Promise.all(actions.map(async (name) => {
+            const result = await tools.get(`module-dev/${name}`)?.({ id: request.id })
+            const record = typeof result === 'object' && result !== null ? result as { ok?: unknown; output?: unknown } : undefined
+            return { name, ok: record?.ok === true, output: typeof record?.output === 'string' ? record.output.slice(-2000) : '' }
+          }))
+          return {
+            checks: results.map(({ name, ok }) => ({ name, ok })),
+            failures: results.filter(result => !result.ok).map(result => `${result.name}: ${result.output || '检查失败'}`).join('\n').slice(-4000),
+          }
+        }
+        const originalTask = `目标模块 ID：${request.id}\n任务：${request.task}\n只能操作该模块中的已有文件。完成任务并运行必要检查，最后用简洁正文报告实际改动与证据。`
+        const { value: report, validation: verification, attempts } = await runVerifiedAgent({
+          task: originalTask,
+          run: runAgent,
+          validate: async () => await runChecks(),
+          retryTask: ({ validation }) => validation.checks.every(check => check.ok)
+            ? undefined
+            : `${originalTask}\n\n首次实现未通过宿主验证。只修复以下失败，不扩大任务范围；完成后再次运行必要检查：\n${validation.failures}`,
+        })
+        const ok = verification.checks.every(check => check.ok)
+        const finished = await tracker({ id: request.id, action: ok ? 'end' : 'rollback', token: started.token }) as { changedFiles?: unknown }
+        return {
+          ok,
+          changedFiles: Array.isArray(finished.changedFiles) ? finished.changedFiles : [],
+          attempts,
+          repaired: attempts === 2 && ok,
+          rolledBack: !ok,
+          checks: verification.checks,
+          summary: typeof report === 'string' ? report : '',
+        }
+      } catch (error) {
+        try {
+          await tracker({ id: request.id, action: 'rollback', token: started.token })
+        } catch (rollbackError) {
+          throw new AggregateError([error, rollbackError], 'module-dev-rollback-failed')
+        }
+        throw error
+      }
     },
   }
   const refs = [

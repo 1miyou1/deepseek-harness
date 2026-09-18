@@ -120,16 +120,22 @@ const planSchema: ModuleSchema = {
   },
 }
 
+/**
+ * 首跳不请求档位，交给调度器按 task 内容做动态路由（module-scheduler 的
+ * agentStepModelRoutes）；只有降级那一跳点名 terra，好让「这次是降级来的」
+ * 在事后可归因。
+ */
 async function requestPlan(
   agent: ManagedModuleAgent,
   task: string,
-  tier: 'luna' | 'terra',
+  tier: 'luna' | 'terra' | undefined,
   config: ResolvedConfig,
 ): Promise<unknown> {
-  return agent.run({
+  const base = {
     task, tools: [], outputSchema: planSchema, maxSteps: config.maxSteps,
-    maxTokensPerStep: config.maxTokensPerStep, modelTier: tier,
-  })
+    maxTokensPerStep: config.maxTokensPerStep,
+  }
+  return agent.run(tier === undefined ? base : { ...base, modelTier: tier })
 }
 
 async function restoreFiles(snapshots: ReadonlyMap<string, Buffer | undefined>): Promise<void> {
@@ -208,7 +214,7 @@ function clip(text: string, maxBytes: number): string {
 }
 
 function boundedOutput(
-  value: { route: 'luna' | 'terra'; fallback: boolean; summary: string; changedFiles: string[]; checks: CheckResult[] },
+  value: { route: 'dynamic' | 'terra'; fallback: boolean; summary: string; changedFiles: string[]; checks: CheckResult[] },
   maxBytes: number,
 ): Record<string, unknown> {
   const complete = { ok: true, ...value, outputTruncated: false }
@@ -245,7 +251,7 @@ export function createDocumentOrganizerDefinition(
 ): ModuleDefinition {
   const resolved = resolveConfig(config)
   return {
-    id: 'document-organizer', version: '1.0.0', displayName: '通用文档整理器', description: '使用 Luna 规划并安全应用显式文档整理任务，模型错误时降级到 Terra',
+    id: 'document-organizer', version: '1.0.0', displayName: '通用文档整理器', description: '按内容动态选择规划模型并安全应用显式文档整理任务，模型错误时降级到 Terra',
     tools: [], requiresAgent: true,
     inputSchema: { type: 'object', required: ['files', 'task'], additionalProperties: false, properties: {
       files: { type: 'array', minItems: 1, maxItems: resolved.maxFiles, items: { type: 'string' } }, task: { type: 'string' },
@@ -283,11 +289,12 @@ export function createDocumentOrganizerDefinition(
         documents.push({ path, ...(content === undefined ? {} : { content }) })
       }
       const task = prompt(request.task, documents)
-      let route: 'luna' | 'terra' = 'luna'
+      // 首跳走动态路由：档位由调度器按 task 内容挑，模块不知道也不猜它挑了哪个。
+      let route: 'dynamic' | 'terra' = 'dynamic'
       let fallback = false
       let rawPlan: unknown
       try {
-        rawPlan = await requestPlan(agent, task, 'luna', resolved)
+        rawPlan = await requestPlan(agent, task, undefined, resolved)
       } catch (error) {
         if (!(error instanceof Error) || !error.message.startsWith('managed-agent-error')) throw error
         route = 'terra'; fallback = true

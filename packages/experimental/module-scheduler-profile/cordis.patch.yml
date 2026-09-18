@@ -9,8 +9,9 @@
         timeoutMs: 30000
         maxRecentRuns: 50
         agentStepModelRoutes:
-          luna: { provider: xindu-glm, model: glm-5.3-flash }
-          terra: { provider: xindu-glm, model: glm-5.3-flash }
+          luna: { provider: niko-gemini, model: gemini-3.8-flash }
+          terra: { provider: niko-gemini, model: gemini-3.8-flash }
           sol: { provider: openai-codex, model: gpt-5.6-sol }
+        freeformAgentRoute: { provider: xindu, model: deepseek-v4.1-flash }
     - id: module-network-research
       name: '@deepseek-ai/dsh-experimental-module-scheduler-profile/network-research'

@@ -44,6 +44,7 @@ describe('Module Scheduler host profile bundle', () => {
       '@deepseek-ai/dsh-experimental-agent-step-model-router': 'workspace:^',
       '@deepseek-ai/dsh-experimental-android-environment-diagnostics-profile': 'workspace:^',
       '@deepseek-ai/dsh-experimental-module-scheduler': 'workspace:^',
+      '@deepseek-ai/dsh-experimental-web-reader-profile': 'workspace:^',
       '@deepseek-ai/dsh-util-values': 'workspace:^',
       '@deepseek-ai/dsh-web': 'workspace:^',
       '@deepseek-ai/schemastery': 'workspace:^',
@@ -69,10 +70,11 @@ describe('Module Scheduler host profile bundle', () => {
         timeoutMs: 30_000,
         maxRecentRuns: 50,
         agentStepModelRoutes: {
-          luna: { provider: 'xindu-glm', model: 'glm-5.3-flash' },
-          terra: { provider: 'xindu-glm', model: 'glm-5.3-flash' },
+          luna: { provider: 'niko-gemini', model: 'gemini-3.8-flash' },
+          terra: { provider: 'niko-gemini', model: 'gemini-3.8-flash' },
           sol: { provider: 'openai-codex', model: 'gpt-5.6-sol' },
         },
+        freeformAgentRoute: { provider: 'xindu', model: 'deepseek-v4.1-flash' },
       },
     }, {
       id: 'module-network-research',

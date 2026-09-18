@@ -43,6 +43,34 @@ describe('module developer host tools', () => {
     expect(readFileSync(join(root, 'packages/experimental/example-profile/src/module.ts'), 'utf8')).toBe('after\n')
   })
 
+  it('restores changed files from the host snapshot', async () => {
+    const root = workspace()
+    const tools = createModuleDevHostTools(root)
+    const context = hostContext()
+    const started = await tools.get('module-dev/changes')!({ id: 'example', action: 'begin' }, context) as { token: string }
+    await tools.get('module-dev/write')!({ id: 'example', file: 'src/module.ts', expectedContent: 'before\n', content: 'broken\n' }, context)
+
+    await expect(tools.get('module-dev/changes')!({ id: 'example', action: 'rollback', token: started.token }, context))
+      .resolves.toEqual({ changedFiles: ['src/module.ts'] })
+    expect(readFileSync(join(root, 'packages/experimental/example-profile/src/module.ts'), 'utf8')).toBe('before\n')
+  })
+
+  it('never snapshots or restores sensitive files', async () => {
+    const root = workspace()
+    const moduleRoot = join(root, 'packages/experimental/example-profile')
+    writeFileSync(join(moduleRoot, '.env'), 'secret-before\n')
+    const tools = createModuleDevHostTools(root)
+    const context = hostContext()
+    const started = await tools.get('module-dev/changes')!({ id: 'example', action: 'begin' }, context) as { token: string }
+    writeFileSync(join(moduleRoot, '.env'), 'secret-after\n')
+    await tools.get('module-dev/write')!({ id: 'example', file: 'src/module.ts', expectedContent: 'before\n', content: 'broken\n' }, context)
+
+    await expect(tools.get('module-dev/changes')!({ id: 'example', action: 'rollback', token: started.token }, context))
+      .resolves.toEqual({ changedFiles: ['src/module.ts'] })
+    expect(readFileSync(join(moduleRoot, '.env'), 'utf8')).toBe('secret-after\n')
+    expect(readFileSync(join(moduleRoot, 'src/module.ts'), 'utf8')).toBe('before\n')
+  })
+
   it('falls back to the linked source checkout when the session workspace is not a checkout', () => {
     const unrelated = mkdtempSync(join(tmpdir(), 'dsh-module-session-'))
     roots.push(unrelated)
@@ -173,7 +201,7 @@ describe('module developer host tools', () => {
   it('confines fixed validation commands and preserves bounded output', async () => {
     const root = workspace()
     const confined: Array<{ argv: readonly string[]; policy: { mode: string; workspaceRoot: string; sessionId?: string } }> = []
-    const spawned: Array<{ argv: readonly string[]; signal: AbortSignal }> = []
+    const spawned: Array<{ argv: readonly string[]; signal: AbortSignal; env?: Record<string, string> }> = []
     const runtime = {
       sandbox: {
         confine: (argv: readonly string[], policy: { mode: 'read-only' | 'workspace-write'; workspaceRoot: string; sessionId?: string }) => {
@@ -202,12 +230,17 @@ describe('module developer host tools', () => {
     }
 
     expect(confined).toHaveLength(3)
-    expect(confined.every(call => call.policy.mode === 'read-only' && call.policy.workspaceRoot.endsWith('example-profile') && call.policy.sessionId === context.request.sessionId)).toBe(true)
+    expect(confined[0]?.policy.mode).toBe('workspace-write')
+    expect(confined[0]?.policy.workspaceRoot).not.toBe(join(root, 'packages/experimental/example-profile'))
+    expect(confined.slice(1).every(call => call.policy.mode === 'read-only' && call.policy.workspaceRoot === join(root, 'packages/experimental/example-profile'))).toBe(true)
+    expect(confined.every(call => call.policy.sessionId === context.request.sessionId)).toBe(true)
     expect(confined[0]?.argv).toEqual(expect.arrayContaining(['--no-cache', '--configLoader', 'native', '--pool', 'threads', '--maxWorkers', '1']))
     expect(confined[1]?.argv[1]).toMatch(/scripts[\\/]run-oxlint\.ts$/u)
     expect(confined[1]?.argv).not.toContain('tsx/esm')
     expect(confined[2]?.argv).toEqual(expect.arrayContaining(['--noEmit', '--composite', 'false', '--incremental', 'false']))
     expect(spawned.every(call => call.argv[0] === 'sandbox' && call.signal === context.run.signal)).toBe(true)
+    expect(spawned[0]?.env).toEqual({ MODULE_DEV_RESTRICTED_VALIDATION: '1' })
+    expect(spawned.slice(1).every(call => call.env === undefined)).toBe(true)
     expect((await tools.get('module-dev/test')!({ id: 'example' }, context) as { output: string }).output).toHaveLength(4000)
   })
 
@@ -264,7 +297,7 @@ describe('module developer host tools', () => {
       effect: (setup: () => () => void) => { effects.push(setup()) },
     } as unknown as Context)
     expect(registrations).toEqual([
-      'module-dev/create', 'module-dev/remove', 'module-dev/read', 'module-dev/write',
+      'module-dev/create', 'module-dev/remove', 'module-dev/read', 'module-dev/write', 'module-dev/changes',
       'module-dev/test', 'module-dev/lint', 'module-dev/typecheck',
     ])
     for (const dispose of effects) dispose()
@@ -287,7 +320,8 @@ describe('module developer definition', () => {
       expect.objectContaining({ id: 'module-developer', version: '3.0.0', displayName: '受管模块构建助手', requiresAgent: true }),
     ]))
     const existingTools = ['module-dev/read', 'module-dev/write', 'module-dev/test', 'module-dev/lint', 'module-dev/typecheck']
-    expect(definitions.filter(value => value.version !== '3.0.0').every(value => JSON.stringify(value.tools) === JSON.stringify(existingTools))).toBe(true)
+    expect(definitions.find(value => value.version === '1.0.0')?.tools).toEqual(existingTools)
+    expect(definitions.find(value => value.version === '2.0.0')?.tools).toEqual([...existingTools, 'module-dev/changes'])
     expect(definitions.find(value => value.version === '3.0.0')?.tools).toEqual([
       'module-dev/create', 'module-dev/remove', ...existingTools,
     ])
@@ -295,6 +329,96 @@ describe('module developer definition', () => {
     expect(unregister).toHaveBeenCalledWith('module-developer@1.0.0')
     expect(unregister).toHaveBeenCalledWith('module-developer@2.0.0')
     expect(unregister).toHaveBeenCalledWith('module-developer@3.0.0')
+  })
+
+  it('runs existing-module development as a freeform Luna task and verifies it in the host', async () => {
+    const definitions: ModuleDefinition[] = []
+    applyModule({
+      moduleScheduler: { registry: { register: (value: ModuleDefinition) => { definitions.push(value); return `${value.id}@${value.version}` }, unregister: vi.fn() } },
+      effect: () => undefined,
+    } as unknown as Context)
+    const managed = definitions.find(value => value.version === '2.0.0')!
+    expect(managed.resourcePolicy.timeoutMs).toBe(300_000)
+    const run = vi.fn().mockResolvedValue('implemented with evidence')
+    const changes = vi.fn().mockResolvedValueOnce({ token: 'snapshot' }).mockResolvedValueOnce({ changedFiles: ['src/module.ts'] })
+    const tools = new Map([
+      ['module-dev/changes', changes],
+      ['module-dev/test', vi.fn().mockResolvedValue({ action: 'test', ok: true })],
+      ['module-dev/lint', vi.fn().mockResolvedValue({ action: 'lint', ok: true })],
+      ['module-dev/typecheck', vi.fn().mockResolvedValue({ action: 'typecheck', ok: true })],
+    ])
+
+    await expect(managed.execute({
+      sessionId: 's', taskId: 't', runId: 'r', signal: new AbortController().signal,
+      input: { id: 'module-scheduler', task: '实现自由任务模式' }, tools, agent: { run },
+    })).resolves.toEqual({
+      ok: true, changedFiles: ['src/module.ts'], attempts: 1, repaired: false, rolledBack: false,
+      checks: [{ name: 'test', ok: true }, { name: 'lint', ok: true }, { name: 'typecheck', ok: true }],
+      summary: 'implemented with evidence',
+    })
+    expect(run.mock.calls[0]?.[0]).not.toHaveProperty('modelTier')
+    expect(run.mock.calls[0]?.[0]).not.toHaveProperty('outputSchema')
+    expect(run.mock.calls[0]?.[0].tools).not.toContain('module-dev/changes')
+    expect(changes).toHaveBeenNthCalledWith(1, { id: 'module-scheduler', action: 'begin' })
+    expect(changes).toHaveBeenNthCalledWith(2, { id: 'module-scheduler', action: 'end', token: 'snapshot' })
+  })
+
+  it('gives the managed agent one repair attempt after host validation fails', async () => {
+    const definitions: ModuleDefinition[] = []
+    applyModule({
+      moduleScheduler: { registry: { register: (value: ModuleDefinition) => { definitions.push(value); return `${value.id}@${value.version}` }, unregister: vi.fn() } },
+      effect: () => undefined,
+    } as unknown as Context)
+    const managed = definitions.find(value => value.version === '2.0.0')!
+    const run = vi.fn().mockResolvedValueOnce('first attempt').mockResolvedValueOnce('repaired')
+    const changes = vi.fn().mockResolvedValueOnce({ token: 'snapshot' }).mockResolvedValueOnce({ changedFiles: ['src/module.ts'] })
+    const test = vi.fn().mockResolvedValueOnce({ action: 'test', ok: false, output: 'expected after to be before' }).mockResolvedValueOnce({ action: 'test', ok: true })
+    const tools = new Map([
+      ['module-dev/changes', changes],
+      ['module-dev/test', test],
+      ['module-dev/lint', vi.fn().mockResolvedValue({ action: 'lint', ok: true })],
+      ['module-dev/typecheck', vi.fn().mockResolvedValue({ action: 'typecheck', ok: true })],
+    ])
+
+    await expect(managed.execute({
+      sessionId: 's', taskId: 't', runId: 'r', signal: new AbortController().signal,
+      input: { id: 'module-scheduler', task: '实现并修复功能' }, tools, agent: { run },
+    })).resolves.toEqual({
+      ok: true, changedFiles: ['src/module.ts'], attempts: 2, repaired: true, rolledBack: false,
+      checks: [{ name: 'test', ok: true }, { name: 'lint', ok: true }, { name: 'typecheck', ok: true }],
+      summary: 'repaired',
+    })
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(run.mock.calls[1]?.[0].task).toContain('expected after to be before')
+    expect(changes).toHaveBeenNthCalledWith(2, { id: 'module-scheduler', action: 'end', token: 'snapshot' })
+  })
+
+  it('rolls back after the single repair attempt still fails', async () => {
+    const definitions: ModuleDefinition[] = []
+    applyModule({
+      moduleScheduler: { registry: { register: (value: ModuleDefinition) => { definitions.push(value); return `${value.id}@${value.version}` }, unregister: vi.fn() } },
+      effect: () => undefined,
+    } as unknown as Context)
+    const managed = definitions.find(value => value.version === '2.0.0')!
+    const run = vi.fn().mockResolvedValue('still failing')
+    const changes = vi.fn().mockResolvedValueOnce({ token: 'snapshot' }).mockResolvedValueOnce({ changedFiles: ['src/module.ts'] })
+    const tools = new Map([
+      ['module-dev/changes', changes],
+      ['module-dev/test', vi.fn().mockResolvedValue({ action: 'test', ok: false, output: 'persistent failure' })],
+      ['module-dev/lint', vi.fn().mockResolvedValue({ action: 'lint', ok: true })],
+      ['module-dev/typecheck', vi.fn().mockResolvedValue({ action: 'typecheck', ok: true })],
+    ])
+
+    await expect(managed.execute({
+      sessionId: 's', taskId: 't', runId: 'r', signal: new AbortController().signal,
+      input: { id: 'module-scheduler', task: '实现功能' }, tools, agent: { run },
+    })).resolves.toEqual({
+      ok: false, changedFiles: ['src/module.ts'], attempts: 2, repaired: false, rolledBack: true,
+      checks: [{ name: 'test', ok: false }, { name: 'lint', ok: true }, { name: 'typecheck', ok: true }],
+      summary: 'still failing',
+    })
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(changes).toHaveBeenNthCalledWith(2, { id: 'module-scheduler', action: 'rollback', token: 'snapshot' })
   })
 
   it('pins new module construction to Luna or Terra and rejects Sol', async () => {
