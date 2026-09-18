@@ -24,6 +24,13 @@ function workspace(): string {
   return root
 }
 
+function toolchainWorkspace(): string {
+  const root = workspace()
+  symlinkSync(join(process.cwd(), 'node_modules'), join(root, 'node_modules'), 'junction')
+  symlinkSync(join(process.cwd(), 'scripts'), join(root, 'scripts'), 'junction')
+  return root
+}
+
 function runtime(exitCodes: number[] = [0, 0, 0], output = '', commands?: string[][]) {
   let index = 0
   const terminate = vi.fn()
@@ -162,13 +169,14 @@ describe('模块自动校验器', () => {
     })
   })
 
-  it('用真实受管 subprocess 执行 test、lint、typecheck', async () => {
-    const root = process.cwd()
+  it.skipIf(process.env.MODULE_DEV_RESTRICTED_VALIDATION === '1')('用真实受管 subprocess 执行 test、lint、typecheck', async () => {
+    const root = toolchainWorkspace()
     const profile = join(root, 'packages/experimental/example-profile')
     mkdirSync(join(profile, 'src'), { recursive: true })
     mkdirSync(join(profile, 'tests'), { recursive: true })
     writeFileSync(join(profile, 'src/module.ts'), 'export const value = 1\n')
     writeFileSync(join(profile, 'tests/smoke.spec.ts'), "import { writeFileSync } from 'node:fs'\nimport { expect, it } from 'vitest'\nit('sandbox rejects direct writes', () => { expect(() => { writeFileSync(new URL('../src/module.ts', import.meta.url), 'changed') }).toThrow() })\n")
+    writeFileSync(join(profile, 'package.json'), '{"type":"module"}\n')
     writeFileSync(join(profile, 'tsconfig.json'), '{"compilerOptions":{"module":"NodeNext","moduleResolution":"NodeNext","target":"ES2022","skipLibCheck":true,"types":["node"]}}\n')
     const ctx = new Context()
     const subprocessFiber = await ctx.plugin(LocalSubprocessRuntime)
@@ -179,7 +187,7 @@ describe('模块自动校验器', () => {
         sandbox: ctx.sandbox,
         subprocess: ctx.subprocess,
       }, { maxOutputBytes: 65_536 })({ id: 'example', targetFiles: ['src/module.ts'] }, context())
-      expect(result).toMatchObject({ ok: true, status: 'succeeded', results: [
+      expect(result, JSON.stringify(result, null, 2)).toMatchObject({ ok: true, status: 'succeeded', results: [
         { name: 'test', ok: true }, { name: 'lint', ok: true }, { name: 'typecheck', ok: true },
       ] })
       expect(readFileSync(join(profile, 'src/module.ts'), 'utf8')).toBe(before)
@@ -190,13 +198,14 @@ describe('模块自动校验器', () => {
     }
   }, 30_000)
 
-  it('取消信号终止真实受管 subprocess 并等待退出', async () => {
-    const root = process.cwd()
+  it.skipIf(process.env.MODULE_DEV_RESTRICTED_VALIDATION === '1')('取消信号终止真实受管 subprocess 并等待退出', async () => {
+    const root = toolchainWorkspace()
     const profile = join(root, 'packages/experimental/example-profile')
     mkdirSync(join(profile, 'src'), { recursive: true })
     mkdirSync(join(profile, 'tests'), { recursive: true })
     writeFileSync(join(profile, 'src/module.ts'), 'export const value = 1\n')
     writeFileSync(join(profile, 'tests/wait.spec.ts'), "import { it } from 'vitest'\nit('waits', async () => await new Promise(() => {}))\n")
+    writeFileSync(join(profile, 'package.json'), '{"type":"module"}\n')
     writeFileSync(join(profile, 'tsconfig.json'), '{"compilerOptions":{"module":"NodeNext","moduleResolution":"NodeNext","target":"ES2022","skipLibCheck":true,"types":["node"]}}\n')
     const ctx = new Context()
     const fiber = await ctx.plugin(LocalSubprocessRuntime)
